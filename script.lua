@@ -4,7 +4,7 @@
 -- ║         Fix des fuites de mémoire et crash CoreGui       ║
 -- ╚══════════════════════════════════════════════════════════╝
 
--- Prévention pour éviter de dupliquer l'UI si tu réexécutes le script
+-- Prévention pour éviter de dupliquer l'UI
 if getgenv().PressurePremium_Loaded then
     if type(getgenv().PressurePremium_Unload) == "function" then
         getgenv().PressurePremium_Unload()
@@ -18,12 +18,13 @@ local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
+local Debris = game:GetService("Debris")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
 -- ==========================================
--- SÉCURISATION COREGUI (Prévention des Crashs)
+-- SÉCURISATION COREGUI
 -- ==========================================
 local guiParent
 if gethui then
@@ -38,12 +39,12 @@ ESP_Folder.Name = "Pressure_ESP_Premium_Folder"
 ESP_Folder.Parent = guiParent
 
 -- ==========================================
--- GESTION DE LA MÉMOIRE & CONNEXIONS (Fix Lag)
+-- GESTION DE LA MÉMOIRE & CACHES (Fix Lag)
 -- ==========================================
 local ESP_Cache = {}
 local Connections = {}
 local NotifiedEntities = {}
-local interactDebounce = {}
+local Prompt_Cache = {}
 local DangerousEntitiesPresent = {}
 local SafezoneSavedCFrame = nil
 local IsInSafezone = false
@@ -54,16 +55,23 @@ local Toggles = {
     LockerESP = false,
     PlayerESP = false,
     DoorESP = false,
+    CodeESP = false,
     Notifications = false,
     Fullbright = false,
+    NoFog = false,
     AutoInteract = false,
+    AutoLoot = false,
+    AntiVoid = false,
     AutoSafezone = false,
     CFrameSpeed = false,
-    CFrameSpeedValue = 1
+    SpeedSurface = 1,
+    SpeedWater = 1,
+    InWater = false,
+    MinimizeKeyBind = Enum.KeyCode.RightControl
 }
 
 -- ==========================================
--- CHARGEMENT DE L'INTERFACE GRAPHIQUE (FLUENT UI)
+-- CHARGEMENT DE L'INTERFACE GRAPHIQUE
 -- ==========================================
 local success, Fluent = pcall(function()
     return loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -74,23 +82,21 @@ if not success or not Fluent then
     return
 end
 
--- Création de la fenêtre
 local Window = Fluent:CreateWindow({
     Title = "Pressure Script",
-    SubTitle = "par Moha - Premium Edition V2.1",
+    SubTitle = "par Moha - Premium Edition V3.0",
     TabWidth = 160,
-    Size = UDim2.fromOffset(630, 480),
+    Size = UDim2.fromOffset(630, 520),
     Acrylic = true,
     Theme = "Darker",
-    MinimizeKey = Enum.KeyCode.RightControl
+    MinimizeKey = Toggles.MinimizeKeyBind
 })
 
--- Onglets
 local Tabs = {
     Main = Window:AddTab({ Title = "ESP & Entités", Icon = "radar" }),
     Players = Window:AddTab({ Title = "Joueurs", Icon = "users" }),
-    Items = Window:AddTab({ Title = "Objets & Portes", Icon = "box" }),
-    Mods = Window:AddTab({ Title = "Mods Joueur (Bypass)", Icon = "zap" }),
+    Items = Window:AddTab({ Title = "Objets & Codes", Icon = "box" }),
+    Mods = Window:AddTab({ Title = "Mods & Bypass", Icon = "zap" }),
     Visuals = Window:AddTab({ Title = "Visuels", Icon = "eye" }),
     Settings = Window:AddTab({ Title = "Paramètres", Icon = "settings" })
 }
@@ -109,7 +115,6 @@ local function removeESP(entity)
 end
 
 local function createESP(entity, name, color, typeESP)
-    -- typeESP = "Entity", "Item", "Locker", "Player", "Door"
     if not entity or ESP_Cache[entity] then return end
     
     local highlight = Instance.new("Highlight")
@@ -121,6 +126,7 @@ local function createESP(entity, name, color, typeESP)
     highlight.Adornee = entity
     highlight.Parent = ESP_Folder
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Enabled = false
     
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "Tag"
@@ -129,6 +135,7 @@ local function createESP(entity, name, color, typeESP)
     billboard.StudsOffset = Vector3.new(0, (typeESP == "Item" and 1.5) or 3, 0)
     billboard.AlwaysOnTop = true
     billboard.Parent = ESP_Folder
+    billboard.Enabled = false
     
     local label = Instance.new("TextLabel")
     label.Name = "NameLabel"
@@ -139,7 +146,6 @@ local function createESP(entity, name, color, typeESP)
     label.Font = Enum.Font.GothamBold
     label.TextStrokeTransparency = 0
     label.TextStrokeColor3 = Color3.new(0, 0, 0)
-    label.TextScaled = false
     label.TextSize = 13
     label.Parent = billboard
     
@@ -154,15 +160,11 @@ end
 
 local function notifyUser(title, text)
     if not Toggles.Notifications then return end
-    Fluent:Notify({
-        Title = title,
-        Content = text,
-        Duration = 6
-    })
+    Fluent:Notify({Title = title, Content = text, Duration = 5})
 end
 
 -- ==========================================
--- DÉTECTION DES ENTITÉS ET OBJETS
+-- LISTES ET FILTRES
 -- ==========================================
 local EntityList = {
     ["pandemonium"] = Color3.fromRGB(255, 0, 0),
@@ -188,25 +190,20 @@ local ItemList = {
     ["currency"] = Color3.fromRGB(255, 215, 0)
 }
 
-local LockerList = {
-    ["locker"] = Color3.fromRGB(0, 255, 127),
-    ["wardrobe"] = Color3.fromRGB(0, 255, 127)
+local PasswordList = {
+    ["terminal"] = Color3.fromRGB(200, 200, 200),
+    ["station"] = Color3.fromRGB(200, 200, 200),
+    ["keypad"] = Color3.fromRGB(200, 200, 200),
+    ["password"] = Color3.fromRGB(200, 200, 200)
 }
 
-local function formatName(str)
-    return str:gsub("^%l", string.upper)
-end
-
 local function getEntityPosition(entity)
-    if type(entity) == "table" then return nil end
-    if not entity then return nil end
+    if not entity or not entity.Parent then return nil end
     if entity:IsA("Model") then
-        if entity.PrimaryPart then
-            return entity.PrimaryPart.Position
-        else
-            local part = entity:FindFirstChildWhichIsA("BasePart", true)
-            return part and part.Position or nil
-        end
+        local primary = entity.PrimaryPart
+        if primary then return primary.Position end
+        local part = entity:FindFirstChildWhichIsA("BasePart", true)
+        return part and part.Position or nil
     elseif entity:IsA("BasePart") then
         return entity.Position
     end
@@ -214,534 +211,219 @@ local function getEntityPosition(entity)
 end
 
 local function firePrompt(prompt)
+    if not prompt or not prompt.Parent then return end
     if fireproximityprompt then
         fireproximityprompt(prompt)
     else
-        -- Fallback
         prompt:InputHoldBegin()
-        task.wait(prompt.HoldDuration)
+        task.wait(prompt.HoldDuration + 0.01)
         prompt:InputHoldEnd()
     end
 end
 
--- Fonction pour bypass la vérification WalkSpeed en utilisant CFrame
-local function applyCFrameSpeed()
-    if Toggles.CFrameSpeed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local humanoid = LocalPlayer.Character.Humanoid
-        local rootPart = LocalPlayer.Character.HumanoidRootPart
-        if humanoid.MoveDirection.Magnitude > 0 and not IsInSafezone then
-            rootPart.CFrame = rootPart.CFrame + (humanoid.MoveDirection * (Toggles.CFrameSpeedValue / 10))
+-- ==========================================
+-- CORE LOGIC : DETECTION & CACHE
+-- ==========================================
+local function checkEntity(obj)
+    if not obj or not obj.Parent then return end
+    local objName = string.lower(obj.Name)
+
+    -- Instant Interact
+    if obj:IsA("ProximityPrompt") then
+        if not Prompt_Cache[obj] then Prompt_Cache[obj] = true end
+        obj.HoldDuration = 0
+        return
+    end
+
+    -- Protection Anti-Void (Casiers piégés)
+    if Toggles.AntiVoid and string.find(objName, "void") then
+        local p = obj.Parent
+        if p and (string.find(string.lower(p.Name), "locker") or string.find(string.lower(p.Name), "wardrobe")) then
+            removeESP(p)
+            local prompt = p:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then prompt.Enabled = false end
+            return
         end
     end
-end
 
-local function checkEntity(obj)
-    pcall(function()
-        if not obj then return end
-        
-        -- ESP Portes
-        if obj.Name == "NormalDoor" or obj.Name == "NextDoor" or (obj:IsA("Model") and string.find(string.lower(obj.Name), "door") and obj:FindFirstChildWhichIsA("ProximityPrompt", true)) then
+    -- ESP Portes
+    if objName == "normaldoor" or objName == "nextdoor" or (obj:IsA("Model") and string.find(objName, "door") and obj:FindFirstChildWhichIsA("ProximityPrompt", true)) then
+        if not ESP_Cache[obj] then createESP(obj, "🚪 Porte", Color3.new(1,1,1), "Door") end
+        return
+    end
+
+    -- ESP Password / Codes
+    for pw, col in pairs(PasswordList) do
+        if string.find(objName, pw) then
+            if not ESP_Cache[obj] then createESP(obj, "🔑 Password", col, "Code") end
+            return
+        end
+    end
+
+    -- ESP Entités
+    for ent, col in pairs(EntityList) do
+        if string.find(objName, ent) then
+            -- Fix Searchlight (Caméras)
+            if ent == "searchlight" and string.find(objName, "camera") then continue end
+            -- Fix Eyefestation (Si endormie)
+            if ent == "eyefestation" and obj:IsA("Model") and not obj:FindFirstChild("Eye") then continue end
+
             if not ESP_Cache[obj] then
-                createESP(obj, "🚪 Porte", Color3.fromRGB(255, 255, 255), "Door")
-            end
-        end
-
-        if obj:IsA("ProximityPrompt") and Options.Interact_Toggle and Options.Interact_Toggle.Value then
-            obj.HoldDuration = 0
-        end
-
-        if obj:IsA("Model") or obj:IsA("BasePart") then
-            local objName = string.lower(obj.Name)
-            
-            if string.find(objName, "void mass") or string.find(objName, "voidmass") then
-                return
-            end
-            
-            for entityName, color in pairs(EntityList) do
-                if string.find(objName, entityName) then
-                    if not ESP_Cache[obj] then
-                        createESP(obj, formatName(entityName), color, "Entity")
-                        
-                        -- Tracking des dangers pour l'Auto Safezone
-                        if entityName == "angler" or entityName == "pinkie" or entityName == "blitz" or entityName == "froger" or entityName == "chainsmoker" or entityName == "pandemonium" then
-                            DangerousEntitiesPresent[obj] = true
-                        end
-                        
-                        if not NotifiedEntities[obj] then
-                            NotifiedEntities[obj] = true
-                            
-                            local action = "⚠️ CACHEZ-VOUS VITE !"
-                            if entityName == "eyefestation" or entityName == "wall dweller" or entityName == "squiddles" or entityName == "good boy" then
-                                action = "❌ NE VOUS CACHEZ SURTOUT PAS !"
-                            end
-                            
-                            notifyUser("🚨 " .. formatName(entityName), action)
-                        end
-                    end
-                    return
+                createESP(obj, ent:gsub("^%l", string.upper), col, "Entity")
+                if table.find({"angler", "pinkie", "blitz", "froger", "chainsmoker", "pandemonium"}, ent) then
+                    DangerousEntitiesPresent[obj] = true
+                end
+                if not NotifiedEntities[obj] then
+                    NotifiedEntities[obj] = true
+                    notifyUser("🚨 " .. ent:upper(), "Cachez-vous vite !")
                 end
             end
-            
-            for itemName, color in pairs(ItemList) do
-                if string.find(objName, itemName) then
-                    if not ESP_Cache[obj] then
-                        if obj:FindFirstChildWhichIsA("ProximityPrompt", true) then
-                            local avoidDouble = false
-                            if obj.Parent and string.find(string.lower(obj.Parent.Name), itemName) then
-                                avoidDouble = true
-                            end
-                            if not avoidDouble then
-                                createESP(obj, formatName(itemName), color, "Item")
-                            end
-                        end
-                    end
-                    return
-                end
-            end
-            
-            for lockerName, color in pairs(LockerList) do
-                if string.find(objName, lockerName) then
-                    -- Exclusions élargies relatives aux tiroirs, étagères, etc
-                    local isExclude = string.find(objName, "footlocker") or string.find(objName, "drawer") or string.find(objName, "shelf") or string.find(objName, "desk") or string.find(objName, "table") or string.find(objName, "box") or string.find(objName, "small") or string.find(objName, "mini") or string.find(objName, "casiers") or string.find(objName, "item")
-                    if not isExclude then
-                        if not ESP_Cache[obj] then
-                            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                            if prompt then
-                                local avoidDouble = false
-                                if obj.Parent and string.find(string.lower(obj.Parent.Name), lockerName) then
-                                    avoidDouble = true
-                                end
-                                
-                                local actionText = string.lower(prompt.ActionText or "")
-                                if string.find(actionText, "open") or string.find(actionText, "search") or string.find(actionText, "loot") or string.find(actionText, "ouvrir") then
-                                    avoidDouble = true -- On ignore les petits casiers lootables
-                                end
-
-                                if not avoidDouble then
-                                    local safe = true
-                                    for _, child in ipairs(obj:GetDescendants()) do
-                                        if string.find(string.lower(child.Name), "void") then
-                                            safe = false
-                                            break
-                                        end
-                                    end
-                                    if safe then
-                                        createESP(obj, "Cachette", color, "Locker")
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    return
-                end
-            end
+            return
         end
-    end)
-end
+    end
 
--- Player ESP Update
-local function checkPlayer(player)
-    if player == LocalPlayer then return end
-    if player.Character then
-        if not ESP_Cache[player.Character] then
-            createESP(player.Character, player.Name, Color3.fromRGB(0, 255, 255), "Player")
+    -- ESP Items & Auto-Loot
+    for item, col in pairs(ItemList) do
+        if string.find(objName, item) then
+            if not ESP_Cache[obj] and obj:FindFirstChildWhichIsA("ProximityPrompt", true) then
+                createESP(obj, item:gsub("^%l", string.upper), col, "Item")
+            end
+            return
+        end
+    end
+
+    -- ESP Casiers (Safe Only)
+    if string.find(objName, "locker") or string.find(objName, "wardrobe") then
+        if string.find(objName, "foot") or string.find(objName, "desk") then return end
+        if not ESP_Cache[obj] then
+            local isVoid = false
+            for _, c in ipairs(obj:GetDescendants()) do if string.find(string.lower(c.Name), "void") then isVoid = true break end end
+            if not isVoid then createESP(obj, "Cachette", Color3.fromRGB(0, 255, 127), "Locker") end
         end
     end
 end
 
 local function scanMap()
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        checkEntity(obj)
-    end
-    for _, player in ipairs(Players:GetPlayers()) do
-        checkPlayer(player)
-    end
+    for _, v in ipairs(Workspace:GetDescendants()) do task.spawn(checkEntity, v) end
 end
 
 -- ==========================================
--- BOUCLE PRINCIPALE (Fix Lag / Fuite Mémoire)
+-- BOUCLE DE RENDU ET BYPASS
 -- ==========================================
-scanMap()
-Connections["DescendantAdded"] = Workspace.DescendantAdded:Connect(function(descendant)
-    checkEntity(descendant)
-    -- Si le composant interactif est ajouté après (très fréquent sur Roblox), on re-scanne le modèle parent
-    if descendant:IsA("ProximityPrompt") then
-        if descendant.Parent then
-            checkEntity(descendant.Parent)
-            if descendant.Parent.Parent then
-                checkEntity(descendant.Parent.Parent)
-            end
-        end
-    end
+Connections["DescendantAdded"] = Workspace.DescendantAdded:Connect(function(v)
+    checkEntity(v)
+    if v:IsA("ProximityPrompt") and v.Parent then checkEntity(v.Parent) end
 end)
 
-Connections["PlayerAdded"] = Players.PlayerAdded:Connect(function(player)
-    Connections["PlayerChar_"..player.Name] = player.CharacterAdded:Connect(function(char)
-        task.wait(1)
-        checkPlayer(player)
-    end)
-end)
+Connections["Update"] = RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local myPos = char.HumanoidRootPart.Position
+    local hum = char:FindFirstChildOfClass("Humanoid")
 
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        Connections["PlayerChar_"..player.Name] = player.CharacterAdded:Connect(function(char)
-            task.wait(1)
-            checkPlayer(player)
-        end)
-    end
-end
+    -- Detect Water
+    Toggles.InWater = (hum and hum:GetState() == Enum.HumanoidStateType.Swimming)
 
-Connections["UpdateLoop"] = RunService.Heartbeat:Connect(function()
-    local myPos = nil
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        myPos = LocalPlayer.Character.HumanoidRootPart.Position
+    -- Speed Bypass
+    if Toggles.CFrameSpeed and hum and hum.MoveDirection.Magnitude > 0 and not IsInSafezone then
+        local spd = Toggles.InWater and Toggles.SpeedWater or Toggles.SpeedSurface
+        char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame + (hum.MoveDirection * (spd / 10))
     end
-    
-    applyCFrameSpeed() -- Custom WalkSpeed Anti-Cheat Bypass
-    
-    -- Auto Safezone (TP Casier Automatique lors de danger)
+
+    -- No Fog
+    if Toggles.NoFog then
+        for _, v in ipairs(Lighting:GetChildren()) do if v:IsA("Atmosphere") or v:IsA("FogEnd") then pcall(function() v.Parent = nil end) end end
+        Lighting.FogEnd = 100000
+    end
+
+    -- Auto Safezone (Repaired)
     if Toggles.AutoSafezone then
         local hasDanger = false
         for ent, _ in pairs(DangerousEntitiesPresent) do
-            if ent and ent.Parent then
-                hasDanger = true
-                break
-            else
-                DangerousEntitiesPresent[ent] = nil
-            end
+            if ent and ent.Parent then hasDanger = true break else DangerousEntitiesPresent[ent] = nil end
         end
-        
-        if hasDanger and not IsInSafezone then
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-                local nearestLocker = nil
-                local shortestDistance = math.huge
-                
-                for entity, data in pairs(ESP_Cache) do
-                    if data.Type == "Locker" and typeof(entity) == "Instance" and entity.Parent then
-                        local entPos = getEntityPosition(entity)
-                        if entPos then
-                            local dist = (myPos - entPos).Magnitude
-                            if dist < shortestDistance and dist < 100 then -- Cherche dans un rayon de 100 studs
-                                shortestDistance = dist
-                                nearestLocker = entity
-                            end
-                        end
-                    end
-                end
 
-                if nearestLocker then
-                    local prompt = nearestLocker:FindFirstChildWhichIsA("ProximityPrompt", true)
-                    if prompt then 
-                        SafezoneSavedCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
-                        IsInSafezone = true
-                        
-                        -- TP devant le casier et interaction
-                        LocalPlayer.Character.HumanoidRootPart.CFrame = nearestLocker.PrimaryPart and nearestLocker.PrimaryPart.CFrame or CFrame.new(getEntityPosition(nearestLocker))
-                        task.wait(0.1)
-                        firePrompt(prompt)
-                        notifyUser("🛡️ Safezone", "Monstre en approche ! Caché dans le casier automatique.")
-                    end
-                else
-                    -- Pas de casier proche, TP en hauteur en secours
-                    SafezoneSavedCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
-                    IsInSafezone = true
-                    -- On TP très loin horizontalement et légèrement en hauteur (Y = 50 max) pour éviter les barrières de kill
-                    LocalPlayer.Character.HumanoidRootPart.CFrame = SafezoneSavedCFrame + Vector3.new(500, 50, 500)
-                    LocalPlayer.Character.HumanoidRootPart.Anchored = true
-                    notifyUser("🛡️ Safezone", "Aucun casier. TP d'urgence lointain actif.")
+        if hasDanger and not IsInSafezone then
+            local targetLocker = nil
+            local dist = 500
+            for ent, data in pairs(ESP_Cache) do
+                if data.Type == "Locker" and ent.Parent then
+                    local p = getEntityPosition(ent)
+                    if p and (myPos - p).Magnitude < dist then dist = (myPos - p).Magnitude targetLocker = ent end
                 end
+            end
+            if targetLocker then
+                SafezoneSavedCFrame = char.HumanoidRootPart.CFrame
+                IsInSafezone = true
+                char.HumanoidRootPart.CFrame = targetLocker.PrimaryPart and targetLocker.PrimaryPart.CFrame or CFrame.new(getEntityPosition(targetLocker))
+                task.wait(0.1)
+                firePrompt(targetLocker:FindFirstChildWhichIsA("ProximityPrompt", true))
             end
         elseif not hasDanger and IsInSafezone then
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and SafezoneSavedCFrame then
-                LocalPlayer.Character.HumanoidRootPart.Anchored = false
-                
-                -- Si on est caché dans le casier, on n'a plus besoin d'interagir (le monstre est parti, le joueur sortira manuellement ou sera tp)
-                -- TP de retour à la position initiale
-                LocalPlayer.Character.HumanoidRootPart.CFrame = SafezoneSavedCFrame
-                IsInSafezone = false
-                SafezoneSavedCFrame = nil
-                notifyUser("🛡️ Safezone", "Zone claire ! Retour à la normale.")
-            end
+            IsInSafezone = false
+            char.HumanoidRootPart.CFrame = SafezoneSavedCFrame
+            SafezoneSavedCFrame = nil
         end
     end
 
-    -- Auto Interact Aura
-    if Toggles.AutoInteract and myPos and not IsInSafezone then
-        for _, prompt in ipairs(Workspace:GetDescendants()) do
-            if prompt:IsA("ProximityPrompt") and prompt.Enabled and prompt.Parent then
-                local objPos = getEntityPosition(prompt.Parent)
-                if objPos and (myPos - objPos).Magnitude <= 12 then
-                    local n = string.lower(prompt.Parent.Name)
-                    -- Ignorer casiers, portes et lecteurs de keycard
-                    if not string.find(n, "locker") and not string.find(n, "wardrobe") and not string.find(n, "door") and not string.find(n, "reader") and not string.find(n, "keycard") then
-                        if not interactDebounce[prompt] then
-                            interactDebounce[prompt] = true
-                            task.spawn(function()
-                                pcall(firePrompt, prompt)
-                                task.wait(0.05) -- Délai grandement réduit pour ramasser super vite
-                                if interactDebounce then interactDebounce[prompt] = nil end
-                            end)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    for entity, data in pairs(ESP_Cache) do
-        if entity and (typeof(entity) == "Instance" and entity.Parent) then
-            local entPos = getEntityPosition(entity)
-            if entPos and myPos then
-                local shouldShow = false
-                if data.Type == "Entity" and Toggles.EntityESP then shouldShow = true end
-                if data.Type == "Item" and Toggles.ItemESP then shouldShow = true end
-                if data.Type == "Locker" and Toggles.LockerESP then shouldShow = true end
-                if data.Type == "Player" and Toggles.PlayerESP then shouldShow = true end
-                if data.Type == "Door" and Toggles.DoorESP then shouldShow = true end
+    -- ESP Rendering & Auto-Loot
+    for ent, data in pairs(ESP_Cache) do
+        if ent and ent.Parent then
+            local p = getEntityPosition(ent)
+            if p then
+                local d = (myPos - p).Magnitude
+                local show = Toggles[data.Type .. "ESP"] or (data.Type == "Code" and Toggles.CodeESP)
                 
-                if not shouldShow then
-                    data.Highlight.Enabled = false
-                    data.Billboard.Enabled = false
+                -- Auto Loot (Items & Gold)
+                if Toggles.AutoLoot and d < 15 and data.Type == "Item" then
+                    local pr = ent:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    if pr and pr.Enabled then firePrompt(pr) end
+                end
+
+                if show and d < (data.Type == "Door" and 300 or 2000) then
+                    data.Highlight.Enabled, data.Billboard.Enabled = true, true
+                    data.Label.Text = string.format("%s\n[%dm]", data.DisplayName, math.floor(d))
                 else
-                    local dist = math.floor((myPos - entPos).Magnitude)
-                    
-                    -- Optimisation FPS & Fix de la limite des 31 Highlights de Roblox
-                    local maxDist = 5000
-                    if data.Type == "Door" then maxDist = 250
-                    elseif data.Type == "Locker" then maxDist = 250
-                    elseif data.Type == "Item" then maxDist = 400
-                    elseif data.Type == "Entity" then maxDist = 4000 end
-                    
-                    if dist > maxDist then
-                        data.Highlight.Enabled = false
-                        data.Billboard.Enabled = false
-                    else
-                        data.Highlight.Enabled = true
-                        data.Billboard.Enabled = true
-                        data.Label.Text = string.format("%s\n[%dm]", data.DisplayName, dist)
-                    end
+                    data.Highlight.Enabled, data.Billboard.Enabled = false, false
                 end
-            else
-                data.Highlight.Enabled = false
-                data.Billboard.Enabled = false
             end
-        else
-            removeESP(entity)
-        end
-    end
-    
-    if Toggles.Fullbright then
-        Lighting.Ambient = Color3.new(1, 1, 1)
-        Lighting.ColorShift_Bottom = Color3.new(1, 1, 1)
-        Lighting.ColorShift_Top = Color3.new(1, 1, 1)
+        else removeESP(ent) end
     end
 end)
 
 -- ==========================================
--- ONGLET : ESP & ENTITÉS
+-- INTERFACE (ONGLETS)
 -- ==========================================
-Tabs.Main:AddParagraph({ Title = "ESP des Entités (Anti-Lag)", Content = "Suivez toutes les entités du jeu sans lag." })
+Tabs.Main:AddToggle("EntityESP", {Title = "Entity ESP", Default = false}):OnChanged(function(v) Toggles.EntityESP = v end)
+Tabs.Main:AddToggle("Notifs", {Title = "Notifications", Default = false}):OnChanged(function(v) Toggles.Notifications = v end)
+Tabs.Main:AddToggle("Safezone", {Title = "Auto Safezone", Default = false}):OnChanged(function(v) Toggles.AutoSafezone = v end)
 
-Tabs.Main:AddButton({
-    Title = "Actualiser l'ESP (Scan Manuel)",
-    Description = "Utile si les nouveautés ne s'affichent pas à temps.",
-    Callback = function()
-        scanMap()
-        if Toggles.Notifications then
-            Fluent:Notify({Title = "Scan manuel", Content = "La carte a été rafraîchie.", Duration = 3})
-        end
-    end
-})
+Tabs.Items:AddToggle("ItemESP", {Title = "Item ESP", Default = false}):OnChanged(function(v) Toggles.ItemESP = v end)
+Tabs.Items:AddToggle("DoorESP", {Title = "Door ESP", Default = false}):OnChanged(function(v) Toggles.DoorESP = v end)
+Tabs.Items:AddToggle("CodeESP", {Title = "Code/Password ESP", Default = false}):OnChanged(function(v) Toggles.CodeESP = v end)
+Tabs.Items:AddToggle("Loot", {Title = "Auto-Loot Aura", Default = false}):OnChanged(function(v) Toggles.AutoLoot = v end)
 
-local ToggleEntity = Tabs.Main:AddToggle("EntityESP_Toggle", {Title = "Activer l'Entity ESP", Default = false})
-ToggleEntity:OnChanged(function() Toggles.EntityESP = Options.EntityESP_Toggle.Value end)
+Tabs.Mods:AddToggle("CFSpeed", {Title = "Vitesse CFrame", Default = false}):OnChanged(function(v) Toggles.CFrameSpeed = v end)
+Tabs.Mods:AddSlider("SurfSpeed", {Title = "Vitesse Surface", Min = 1, Max = 10, Default = 1, Callback = function(v) Toggles.SpeedSurface = v end})
+Tabs.Mods:AddSlider("WatSpeed", {Title = "Vitesse Eaux", Min = 1, Max = 10, Default = 1, Callback = function(v) Toggles.SpeedWater = v end})
+Tabs.Mods:AddToggle("AVoid", {Title = "Anti-Void Mass", Default = true}):OnChanged(function(v) Toggles.AntiVoid = v end)
 
-local ToggleNotifs = Tabs.Main:AddToggle("Notif_Toggle", {Title = "Notifications d'Approche", Default = false})
-ToggleNotifs:OnChanged(function() Toggles.Notifications = Options.Notif_Toggle.Value end)
+Tabs.Visuals:AddToggle("Fullbright", {Title = "Fullbright", Default = false}):OnChanged(function(v) Toggles.Fullbright = v end)
+Tabs.Visuals:AddToggle("NoFog", {Title = "No Fog / Steam", Default = false}):OnChanged(function(v) Toggles.NoFog = v end)
 
-local ToggleLocker = Tabs.Main:AddToggle("LockerESP_Toggle", {Title = "ESP des Cachettes (Safe)", Default = false})
-ToggleLocker:OnChanged(function() Toggles.LockerESP = Options.LockerESP_Toggle.Value end)
-
-Tabs.Main:AddSection("Couleurs des Entités (Customisables)")
-for entityName, color in pairs(EntityList) do
-    Tabs.Main:AddColorpicker("Color_" .. entityName, { Title = formatName(entityName), Default = color }):OnChanged(function()
-        EntityList[entityName] = Options["Color_" .. entityName].Value
-        for entity, data in pairs(ESP_Cache) do
-            if data.Type == "Entity" and string.find(string.lower(entity.Name), entityName) then
-                data.Highlight.FillColor = EntityList[entityName]
-                data.Label.TextColor3 = EntityList[entityName]
-            end
-        end
-    end)
-end
+Tabs.Settings:AddKeybind("MenuKey", {Title = "Touche Menu", Default = "RightControl", ChangedCallback = function(v) Window.MinimizeKey = v end})
+Tabs.Settings:AddButton({Title = "Unload Script", Callback = function() getgenv().PressurePremium_Unload() end})
 
 -- ==========================================
--- ONGLET : MODS JOUEUR (Bypass)
--- ==========================================
-Tabs.Mods:AddParagraph({ Title = "Mods Joueur & Bypasses", Content = "Ces mods utilisent des méthodes qui évitent l'anti-cheat du jeu." })
-
-local ToggleCFrameSpeed = Tabs.Mods:AddToggle("CFrameSpeed_Toggle", {Title = "Vitesse de Déplacement (CFrame Bypass)", Default = false})
-ToggleCFrameSpeed:OnChanged(function() Toggles.CFrameSpeed = Options.CFrameSpeed_Toggle.Value end)
-
-Tabs.Mods:AddSlider("CFrameSpeed_Value", {
-    Title = "Multiplicateur de Vitesse",
-    Description = "Attention: Ne le mettez pas trop haut pour éviter d'être téléporté en arrière.",
-    Default = 1,
-    Min = 0.5,
-    Max = 10,
-    Rounding = 1,
-    Callback = function(Value)
-        Toggles.CFrameSpeedValue = Value
-    end
-})
-
-local ToggleAutoInteract = Tabs.Mods:AddToggle("AutoInteract_Toggle", {Title = "Aura d'Interaction (Ramasse Auto)", Default = false})
-ToggleAutoInteract:OnChanged(function() Toggles.AutoInteract = Options.AutoInteract_Toggle.Value end)
-
-local ToggleSafezone = Tabs.Mods:AddToggle("AutoSafezone_Toggle", {Title = "Auto Safezone (Cache Automatique Casier)", Default = false})
-ToggleSafezone:OnChanged(function() Toggles.AutoSafezone = Options.AutoSafezone_Toggle.Value end)
-
--- ==========================================
--- ONGLET : JOUEURS
--- ==========================================
-Tabs.Players:AddParagraph({ Title = "ESP Joueurs", Content = "Voir les membres de votre groupe." })
-
-local TogglePlayer = Tabs.Players:AddToggle("PlayerESP_Toggle", {Title = "Activer l'ESP Joueur", Default = false})
-TogglePlayer:OnChanged(function() Toggles.PlayerESP = Options.PlayerESP_Toggle.Value end)
-
--- ==========================================
--- ONGLET : OBJETS & PORTES
--- ==========================================
-Tabs.Items:AddParagraph({ Title = "ESP des Objets", Content = "Détectez les loots importants et portes." })
-
-local ToggleItems = Tabs.Items:AddToggle("ItemESP_Toggle", {Title = "Activer l'Item ESP", Default = false})
-ToggleItems:OnChanged(function() Toggles.ItemESP = Options.ItemESP_Toggle.Value end)
-
-local ToggleDoors = Tabs.Items:AddToggle("DoorESP_Toggle", {Title = "ESP des Portes", Default = false})
-ToggleDoors:OnChanged(function() Toggles.DoorESP = Options.DoorESP_Toggle.Value end)
-
-Tabs.Items:AddSection("Couleurs des Objets")
-for itemName, color in pairs(ItemList) do
-    Tabs.Items:AddColorpicker("Color_" .. itemName, { Title = formatName(itemName), Default = color }):OnChanged(function()
-        ItemList[itemName] = Options["Color_" .. itemName].Value
-        for entity, data in pairs(ESP_Cache) do
-            if data.Type == "Item" and string.find(string.lower(entity.Name), itemName) then
-                data.Highlight.FillColor = ItemList[itemName]
-                data.Label.TextColor3 = ItemList[itemName]
-            end
-        end
-    end)
-end
-
--- ==========================================
--- ONGLET : VISUELS
--- ==========================================
-Tabs.Visuals:AddParagraph({ Title = "Améliorations Visuelles", Content = "Options pour la caméra et l'éclairage." })
-
-local ToggleFullbright = Tabs.Visuals:AddToggle("Fullbright_Toggle", {Title = "Luminosité Max (Fullbright)", Default = false})
-ToggleFullbright:OnChanged(function()
-    Toggles.Fullbright = Options.Fullbright_Toggle.Value
-    if not Toggles.Fullbright then
-        Lighting.Ambient = Color3.fromRGB(0, 0, 0)
-        Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
-        Lighting.ColorShift_Top = Color3.fromRGB(0, 0, 0)
-    end
-end)
-
--- ==========================================
--- ONGLET : PARAMÈTRES
--- ==========================================
-Tabs.Settings:AddParagraph({ Title = "Utilitaires & Sécurité", Content = "Clean le script et hacks divers." })
-
-local ToggleInteract = Tabs.Settings:AddToggle("Interact_Toggle", {Title = "Hold Duration à 0 Instantané", Default = false})
-ToggleInteract:OnChanged(function()
-    if Options.Interact_Toggle.Value then
-        for _, obj in ipairs(Workspace:GetDescendants()) do
-            if obj:IsA("ProximityPrompt") then
-                obj.HoldDuration = 0
-            end
-        end
-    end
-end)
-
-Tabs.Settings:AddInput("Minimize_Input", {
-    Title = "Touche du Menu (Nom en Anglais)",
-    Description = "Exemple: RightControl, E, P, Insert, LeftAlt...",
-    Default = "RightControl",
-    Placeholder = "Tapez le nom de la touche ici",
-    Numeric = false,
-    Finished = true,
-    Callback = function(Value)
-        local success, key = pcall(function() return Enum.KeyCode[Value] end)
-        if success and key then
-            Window.MinimizeKey = key
-            if Toggles.Notifications then
-                Fluent:Notify({Title = "⚙️ Paramètres", Content = "Touche du menu modifiée sur : " .. Value, Duration = 3})
-            end
-        else
-            if Toggles.Notifications then
-                Fluent:Notify({Title = "❌ Erreur", Content = "Nom de touche invalide ! Vérifiez l'orthographe.", Duration = 3})
-            end
-        end
-    end
-})
-
-Tabs.Settings:AddButton({
-    Title = "Unload Script",
-    Description = "Supprime toutes les traces VISUELLES et DÉCONNECTE le code de la mémoire vive.",
-    Callback = function()
-        if type(getgenv().PressurePremium_Unload) == "function" then
-            getgenv().PressurePremium_Unload()
-        end
-    end
-})
-
--- ==========================================
--- FONCTION UNLOAD TOTALE
+-- UNLOAD
 -- ==========================================
 getgenv().PressurePremium_Unload = function()
-    for _, conn in pairs(Connections) do
-        if typeof(conn) == "RBXScriptConnection" then
-            conn:Disconnect()
-        end
-    end
-    table.clear(Connections)
-    
-    for entity, _ in pairs(ESP_Cache) do
-        removeESP(entity)
-    end
-    table.clear(ESP_Cache)
-    table.clear(DangerousEntitiesPresent)
-    table.clear(interactDebounce)
-    table.clear(NotifiedEntities)
-    
-    if ESP_Folder then
-        ESP_Folder:Destroy()
-    end
-    
-    if Lighting then
-        Lighting.Ambient = Color3.fromRGB(0, 0, 0)
-        Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
-        Lighting.ColorShift_Top = Color3.fromRGB(0, 0, 0)
-    end
-    
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and IsInSafezone and SafezoneSavedCFrame then
-        LocalPlayer.Character.HumanoidRootPart.Anchored = false
-        LocalPlayer.Character.HumanoidRootPart.CFrame = SafezoneSavedCFrame
-    end
-    
+    for _, c in pairs(Connections) do pcall(function() c:Disconnect() end) end
+    for e, _ in pairs(ESP_Cache) do removeESP(e) end
+    if ESP_Folder then ESP_Folder:Destroy() end
     Window:Destroy()
-    
     getgenv().PressurePremium_Loaded = false
 end
 
--- ==========================================
--- FIN DE L'INITIALISATION
--- ==========================================
-Window:SelectTab(1)
-Fluent:Notify({
-    Title = "⚡ Premium V2.1",
-    Content = "Bugs fixés et Auto-Safezone ajouté !",
-    Duration = 8
-})
+scanMap()
+Fluent:Notify({Title = "Pressure Premium V3", Content = "Script Chargé avec succès !", Duration = 5})
