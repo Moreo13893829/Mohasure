@@ -82,7 +82,7 @@ local Window = Fluent:CreateWindow({
     Size = UDim2.fromOffset(630, 480),
     Acrylic = true,
     Theme = "Darker",
-    MinimizeKey = Enum.KeyCode.E
+    MinimizeKey = Enum.KeyCode.RightControl
 })
 
 -- Onglets
@@ -285,7 +285,15 @@ local function checkEntity(obj)
             for itemName, color in pairs(ItemList) do
                 if string.find(objName, itemName) then
                     if not ESP_Cache[obj] then
-                        createESP(obj, formatName(itemName), color, "Item")
+                        if obj:FindFirstChildWhichIsA("ProximityPrompt", true) then
+                            local avoidDouble = false
+                            if obj.Parent and string.find(string.lower(obj.Parent.Name), itemName) then
+                                avoidDouble = true
+                            end
+                            if not avoidDouble then
+                                createESP(obj, formatName(itemName), color, "Item")
+                            end
+                        end
                     end
                     return
                 end
@@ -293,19 +301,34 @@ local function checkEntity(obj)
             
             for lockerName, color in pairs(LockerList) do
                 if string.find(objName, lockerName) then
-                    -- Exclusions élargies
-                    local isExclude = string.find(objName, "footlocker") or string.find(objName, "drawer") or string.find(objName, "shelf") or string.find(objName, "desk") or string.find(objName, "table") or string.find(objName, "box")
+                    -- Exclusions élargies relatives aux tiroirs, étagères, etc
+                    local isExclude = string.find(objName, "footlocker") or string.find(objName, "drawer") or string.find(objName, "shelf") or string.find(objName, "desk") or string.find(objName, "table") or string.find(objName, "box") or string.find(objName, "small") or string.find(objName, "mini") or string.find(objName, "casiers") or string.find(objName, "item")
                     if not isExclude then
                         if not ESP_Cache[obj] then
-                            local safe = true
-                            for _, child in ipairs(obj:GetDescendants()) do
-                                if string.find(string.lower(child.Name), "void") then
-                                    safe = false
-                                    break
+                            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                            if prompt then
+                                local avoidDouble = false
+                                if obj.Parent and string.find(string.lower(obj.Parent.Name), lockerName) then
+                                    avoidDouble = true
                                 end
-                            end
-                            if safe then
-                                createESP(obj, "Cachette", color, "Locker")
+                                
+                                local actionText = string.lower(prompt.ActionText or "")
+                                if string.find(actionText, "open") or string.find(actionText, "search") or string.find(actionText, "loot") or string.find(actionText, "ouvrir") then
+                                    avoidDouble = true -- On ignore les petits casiers lootables
+                                end
+
+                                if not avoidDouble then
+                                    local safe = true
+                                    for _, child in ipairs(obj:GetDescendants()) do
+                                        if string.find(string.lower(child.Name), "void") then
+                                            safe = false
+                                            break
+                                        end
+                                    end
+                                    if safe then
+                                        createESP(obj, "Cachette", color, "Locker")
+                                    end
+                                end
                             end
                         end
                     end
@@ -412,9 +435,10 @@ Connections["UpdateLoop"] = RunService.Heartbeat:Connect(function()
                     -- Pas de casier proche, TP en hauteur en secours
                     SafezoneSavedCFrame = LocalPlayer.Character.HumanoidRootPart.CFrame
                     IsInSafezone = true
-                    LocalPlayer.Character.HumanoidRootPart.CFrame = SafezoneSavedCFrame + Vector3.new(0, 1500, 0)
+                    -- On TP très loin horizontalement et légèrement en hauteur (Y = 50 max) pour éviter les barrières de kill
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = SafezoneSavedCFrame + Vector3.new(500, 50, 500)
                     LocalPlayer.Character.HumanoidRootPart.Anchored = true
-                    notifyUser("🛡️ Safezone", "Aucun casier trouvé. TP en hauteur actif.")
+                    notifyUser("🛡️ Safezone", "Aucun casier. TP d'urgence lointain actif.")
                 end
             end
         elseif not hasDanger and IsInSafezone then
@@ -444,7 +468,7 @@ Connections["UpdateLoop"] = RunService.Heartbeat:Connect(function()
                             interactDebounce[prompt] = true
                             task.spawn(function()
                                 pcall(firePrompt, prompt)
-                                task.wait(1.5)
+                                task.wait(0.05) -- Délai grandement réduit pour ramasser super vite
                                 if interactDebounce then interactDebounce[prompt] = nil end
                             end)
                         end
@@ -607,13 +631,25 @@ ToggleInteract:OnChanged(function()
     end
 end)
 
-Tabs.Settings:AddKeybind("Minimize_Keybind", {
-    Title = "Touche du Menu",
-    Mode = "Toggle",
+Tabs.Settings:AddInput("Minimize_Input", {
+    Title = "Touche du Menu (Nom en Anglais)",
+    Description = "Exemple: RightControl, E, P, Insert, LeftAlt...",
     Default = "RightControl",
-    Callback = function() end,
-    ChangedCallback = function(NewKey)
-        Window.MinimizeKey = NewKey
+    Placeholder = "Tapez le nom de la touche ici",
+    Numeric = false,
+    Finished = true,
+    Callback = function(Value)
+        local success, key = pcall(function() return Enum.KeyCode[Value] end)
+        if success and key then
+            Window.MinimizeKey = key
+            if Toggles.Notifications then
+                Fluent:Notify({Title = "⚙️ Paramètres", Content = "Touche du menu modifiée sur : " .. Value, Duration = 3})
+            end
+        else
+            if Toggles.Notifications then
+                Fluent:Notify({Title = "❌ Erreur", Content = "Nom de touche invalide ! Vérifiez l'orthographe.", Duration = 3})
+            end
+        end
     end
 })
 
