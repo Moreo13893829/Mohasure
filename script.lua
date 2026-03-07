@@ -362,7 +362,18 @@ end
 -- BOUCLE PRINCIPALE (Fix Lag / Fuite Mémoire)
 -- ==========================================
 scanMap()
-Connections["DescendantAdded"] = Workspace.DescendantAdded:Connect(checkEntity)
+Connections["DescendantAdded"] = Workspace.DescendantAdded:Connect(function(descendant)
+    checkEntity(descendant)
+    -- Si le composant interactif est ajouté après (très fréquent sur Roblox), on re-scanne le modèle parent
+    if descendant:IsA("ProximityPrompt") then
+        if descendant.Parent then
+            checkEntity(descendant.Parent)
+            if descendant.Parent.Parent then
+                checkEntity(descendant.Parent.Parent)
+            end
+        end
+    end
+end)
 
 Connections["PlayerAdded"] = Players.PlayerAdded:Connect(function(player)
     Connections["PlayerChar_"..player.Name] = player.CharacterAdded:Connect(function(char)
@@ -493,11 +504,23 @@ Connections["UpdateLoop"] = RunService.Heartbeat:Connect(function()
                     data.Highlight.Enabled = false
                     data.Billboard.Enabled = false
                 else
-                    data.Highlight.Enabled = true
-                    data.Billboard.Enabled = true
-                    
                     local dist = math.floor((myPos - entPos).Magnitude)
-                    data.Label.Text = string.format("%s\n[%dm]", data.DisplayName, dist)
+                    
+                    -- Optimisation FPS & Fix de la limite des 31 Highlights de Roblox
+                    local maxDist = 5000
+                    if data.Type == "Door" then maxDist = 250
+                    elseif data.Type == "Locker" then maxDist = 250
+                    elseif data.Type == "Item" then maxDist = 400
+                    elseif data.Type == "Entity" then maxDist = 4000 end
+                    
+                    if dist > maxDist then
+                        data.Highlight.Enabled = false
+                        data.Billboard.Enabled = false
+                    else
+                        data.Highlight.Enabled = true
+                        data.Billboard.Enabled = true
+                        data.Label.Text = string.format("%s\n[%dm]", data.DisplayName, dist)
+                    end
                 end
             else
                 data.Highlight.Enabled = false
@@ -519,6 +542,17 @@ end)
 -- ONGLET : ESP & ENTITÉS
 -- ==========================================
 Tabs.Main:AddParagraph({ Title = "ESP des Entités (Anti-Lag)", Content = "Suivez toutes les entités du jeu sans lag." })
+
+Tabs.Main:AddButton({
+    Title = "Actualiser l'ESP (Scan Manuel)",
+    Description = "Utile si les nouveautés ne s'affichent pas à temps.",
+    Callback = function()
+        scanMap()
+        if Toggles.Notifications then
+            Fluent:Notify({Title = "Scan manuel", Content = "La carte a été rafraîchie.", Duration = 3})
+        end
+    end
+})
 
 local ToggleEntity = Tabs.Main:AddToggle("EntityESP_Toggle", {Title = "Activer l'Entity ESP", Default = false})
 ToggleEntity:OnChanged(function() Toggles.EntityESP = Options.EntityESP_Toggle.Value end)
