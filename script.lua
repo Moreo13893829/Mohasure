@@ -1,352 +1,373 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║               PRESSURE PREMIUM ESP SCRIPT                ║
--- ║         Interface Fluent UI, Optimisé & Sécurisé         ║
--- ║         + FIX ESP (Limite Roblox 31) & TABS ORGANISÉS    ║
+-- ║               MOHA HUB v1.9 (PRESSURE)                   ║
+-- ║       Smart ESP (Strict Filter), Auto-Loot & Deleter     ║
 -- ╚══════════════════════════════════════════════════════════╝
 
-if getgenv().PressurePremium_Loaded then
-    if type(getgenv().PressurePremium_Unload) == "function" then
-        getgenv().PressurePremium_Unload()
-    end
+if getgenv().MohaPressure_Loaded then
+    if type(getgenv().MohaPressure_Unload) == "function" then getgenv().MohaPressure_Unload() end
 end
-getgenv().PressurePremium_Loaded = true
+getgenv().MohaPressure_Loaded = true
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
-local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
-local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-
 local LocalPlayer = Players.LocalPlayer
 
--- ON FORCE LE MODE MOBILE POUR QUE LE BOUTON APPARAISSE À 100%
-local isMobile = true 
+local isMobile = UIS.TouchEnabled and not UIS.MouseEnabled
 
-local guiParent = (gethui and gethui()) or CoreGui
-local ESP_Folder = Instance.new("Folder", guiParent)
-ESP_Folder.Name = "Pressure_ESP_Premium_Folder"
-
--- ==========================================
--- GESTION MÉMOIRE & TOGGLES
--- ==========================================
-local ESP_Cache = {}
-local Connections = {}
-local NotifiedEntities = {}
-local Prompt_Cache = {}
-local DangerousEntitiesPresent = {}
-local SafezoneSavedCFrame = nil
-local IsInSafezone = false
+-- ══════════════════════════════════
+--     COULEURS & THÈME
+-- ══════════════════════════════════
+local Colors = {
+    Bg = Color3.fromRGB(10, 15, 20), Sidebar = Color3.fromRGB(15, 20, 30),
+    Accent = Color3.fromRGB(0, 200, 255), AccentGlow = Color3.fromRGB(50, 220, 255),
+    CardBg = Color3.fromRGB(20, 25, 35), Text = Color3.fromRGB(255, 255, 255),
+    Monster = Color3.fromRGB(255, 50, 50), Item = Color3.fromRGB(50, 255, 100),
+    Door = Color3.fromRGB(255, 200, 50), Currency = Color3.fromRGB(255, 215, 0),
+    Delete = Color3.fromRGB(255, 60, 100)
+}
 
 local Toggles = {
-    EntityESP = false, ItemESP = false, LockerESP = false, DoorESP = false, CodeESP = false,
-    Notifications = false, Fullbright = false, NoFog = false, AutoInteract = false, AutoLoot = false, AntiVoid = true,
-    AutoSafezone = false, CFrameSpeed = false, SpeedSurface = 1, SpeedWater = 1, InWater = false,
-    MinimizeKeyBind = Enum.KeyCode.RightControl,
-    
-    -- Addons God Mode
-    AutoPandemonium = false, AutoCables = false, ForceUnlock = false, PlayerAura = false
+    ESPItems = false, ESPDoors = false, ESPLockers = false, ESPCurrency = false,
+    InstantInteract = false, Fullbright = false, AutoLoot = false, AlarmEnabled = true,
+    Ent_Angler = true, Ent_Pinkie = true, Ent_Blitz = true, Ent_Chainsmoker = true,
+    Ent_Froger = true, Ent_Pandemonium = true, Ent_Eyefestation = false, Ent_WallDweller = true,
+    Del_Eyefestation = false, Del_EnragedEyefestation = false, Del_Searchlights = false,
+    Del_ChaseSteam = false, Del_ChaseFan = false, Del_Fish = false,
+    Del_Abomination = false, Del_Pipsqueak = false, Del_Baldi = false,
+    Del_Bouncer = false, Del_Turret = false, Del_Pandemonium = false,
+    Del_Statue = false, Del_BiggerStatue = false, Del_DiVine = false,
+    Del_Skeleipede = false, Del_Parasite = false
 }
 
--- ==========================================
--- INTERFACE FLUENT UI
--- ==========================================
-local success, Fluent = pcall(function()
-    return loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-end)
-
-if not success or not Fluent then
-    LocalPlayer:Kick("Erreur: Impossible de charger l'interface Fluent.")
-    return
+local function create(className, props)
+    local inst = Instance.new(className)
+    for k, v in pairs(props) do inst[k] = v end
+    return inst
 end
 
-local Window = Fluent:CreateWindow({
-    Title = "Pressure Script",
-    SubTitle = "Premium Edition + Fix ESP",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(480, 320), -- Taille optimisée
-    Acrylic = true,
-    Theme = "Darker",
-    MinimizeKey = Toggles.MinimizeKeyBind
-})
+local MainSize = isMobile and UDim2.new(0, 480, 0, 300) or UDim2.new(0, 680, 0, 440)
+local MainPos = isMobile and UDim2.new(0.5, -240, 0.5, -150) or UDim2.new(0.5, -340, 0.5, -220)
+local SidebarWidth = isMobile and 140 or 170
 
-local Tabs = {
-    Main = Window:AddTab({ Title = "Accueil & Sécurité", Icon = "shield" }),
-    Minigames = Window:AddTab({ Title = "Mini-Jeux (God)", Icon = "gamepad-2" }),
-    Mods = Window:AddTab({ Title = "Mods & Bypass", Icon = "zap" }),
-    Visuals = Window:AddTab({ Title = "Visuels & ESP", Icon = "eye" }), -- TOUT L'ESP EST ICI MAINTENANT
-    Settings = Window:AddTab({ Title = "Paramètres", Icon = "settings" })
-}
+-- ══════════════════════════════════
+--     NOTIFICATIONS CUSTOM
+-- ══════════════════════════════════
+local ScreenGui = create("ScreenGui", { Name = "MohaPressure", ResetOnSpawn = false, Parent = (gethui and gethui()) or CoreGui })
+local NotifContainer = create("Frame", { Size = UDim2.new(0, 250, 0, 400), Position = UDim2.new(1, -20, 1, -20), AnchorPoint = Vector2.new(1, 1), BackgroundTransparency = 1, Parent = ScreenGui })
+create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 10), Parent = NotifContainer })
 
--- ==========================================
--- FONCTIONS ESP (CORRIGÉES POUR NE PLUS CRASH)
--- ==========================================
-local function removeESP(entity)
-    if ESP_Cache[entity] then
-        if ESP_Cache[entity].Highlight then ESP_Cache[entity].Highlight:Destroy() end
-        if ESP_Cache[entity].Billboard then ESP_Cache[entity].Billboard:Destroy() end
-        ESP_Cache[entity] = nil
-    end
-end
+local function ShowCustomAlert(title, message, color)
+    local card = create("Frame", { Size = UDim2.new(1, 50, 0, 60), BackgroundColor3 = Colors.CardBg, BackgroundTransparency = 1, Parent = NotifContainer })
+    create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = card })
+    local stroke = create("UIStroke", { Color = color, Thickness = 2, Transparency = 1, Parent = card })
+    local titleLbl = create("TextLabel", { Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = title, TextColor3 = color, Font = Enum.Font.GothamBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, TextTransparency = 1, Parent = card })
+    local descLbl = create("TextLabel", { Size = UDim2.new(1, -20, 0, 25), Position = UDim2.new(0, 10, 0, 30), BackgroundTransparency = 1, Text = message, TextColor3 = Colors.Text, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, TextTransparency = 1, Parent = card })
 
-local function createESP(entity, name, color, typeESP)
-    if not entity or ESP_Cache[entity] then return end
-    
-    -- FIX: On ne met le Highlight QUE sur les Monstres et Objets pour ne pas dépasser la limite de 31 de Roblox
-    local highlight = nil
-    if typeESP == "Entity" or typeESP == "Item" or typeESP == "Code" then
-        highlight = Instance.new("Highlight", ESP_Folder)
-        highlight.Name = name .. "_ESP"; highlight.FillColor = color; highlight.OutlineColor = Color3.new(1, 1, 1)
-        highlight.FillTransparency = 0.5; highlight.OutlineTransparency = 0.1; highlight.Adornee = entity
-        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; highlight.Enabled = false
-    end
-    
-    local billboard = Instance.new("BillboardGui", ESP_Folder)
-    billboard.Name = "Tag"; billboard.Adornee = entity; billboard.Size = UDim2.new(0, 150, 0, 50)
-    billboard.StudsOffset = Vector3.new(0, (typeESP == "Item" and 1.5) or 3, 0); billboard.AlwaysOnTop = true; billboard.Enabled = false
-    
-    local label = Instance.new("TextLabel", billboard)
-    label.Size = UDim2.new(1, 0, 1, 0); label.BackgroundTransparency = 1; label.Text = name; label.TextColor3 = color
-    label.Font = Enum.Font.GothamBold; label.TextStrokeTransparency = 0; label.TextStrokeColor3 = Color3.new(0, 0, 0); label.TextSize = 13
-    
-    ESP_Cache[entity] = { Highlight = highlight, Billboard = billboard, Label = label, Type = typeESP, DisplayName = name }
-end
+    TweenService:Create(card, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 0.1 }):Play()
+    TweenService:Create(stroke, TweenInfo.new(0.4), { Transparency = 0 }):Play()
+    TweenService:Create(titleLbl, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
+    TweenService:Create(descLbl, TweenInfo.new(0.4), { TextTransparency = 0 }):Play()
 
-local function notifyUser(title, text)
-    if Toggles.Notifications then Fluent:Notify({Title = title, Content = text, Duration = 5}) end
-end
-
-local function getEntityPosition(entity)
-    if not entity or not entity.Parent then return nil end
-    if entity:IsA("Model") then return entity.PrimaryPart and entity.PrimaryPart.Position or (entity:FindFirstChildWhichIsA("BasePart", true) and entity:FindFirstChildWhichIsA("BasePart", true).Position) end
-    if entity:IsA("BasePart") then return entity.Position end
-    return nil
-end
-
-local function firePrompt(prompt)
-    if not prompt or not prompt.Parent then return end
-    if fireproximityprompt then fireproximityprompt(prompt) else prompt:InputHoldBegin() task.wait(prompt.HoldDuration + 0.01) prompt:InputHoldEnd() end
-end
-
--- ==========================================
--- BOUCLE PRINCIPALE DE DÉTECTION
--- ==========================================
-local auraPart = nil
-
-local EntityList = {
-    ["pandemonium"] = Color3.fromRGB(255, 0, 0), ["angler"] = Color3.fromRGB(0, 255, 0),
-    ["pinkie"] = Color3.fromRGB(255, 105, 180), ["blitz"] = Color3.fromRGB(0, 255, 255),
-    ["froger"] = Color3.fromRGB(0, 128, 0), ["chainsmoker"] = Color3.fromRGB(128, 128, 128),
-    ["eyefestation"] = Color3.fromRGB(173, 255, 47), ["searchlight"] = Color3.fromRGB(255, 255, 0),
-    ["wall dweller"] = Color3.fromRGB(139, 69, 19), ["good boy"] = Color3.fromRGB(255, 215, 0),
-    ["squiddles"] = Color3.fromRGB(128, 0, 128)
-}
-
-local ItemList = {
-    ["keycard"] = Color3.fromRGB(0, 191, 255), ["medkit"] = Color3.fromRGB(255, 20, 147),
-    ["battery"] = Color3.fromRGB(255, 255, 0), ["flashlight"] = Color3.fromRGB(255, 255, 255),
-    ["code breaker"] = Color3.fromRGB(138, 43, 226), ["gold"] = Color3.fromRGB(255, 215, 0),
-    ["currency"] = Color3.fromRGB(255, 215, 0)
-}
-
-local PasswordList = { ["terminal"] = Color3.fromRGB(200, 200, 200), ["station"] = Color3.fromRGB(200, 200, 200), ["keypad"] = Color3.fromRGB(200, 200, 200), ["password"] = Color3.fromRGB(200, 200, 200) }
-
-local function checkEntity(obj)
-    if not obj or not obj.Parent then return end
-    local objName = string.lower(obj.Name)
-
-    if obj:IsA("ProximityPrompt") then obj.HoldDuration = 0 return end
-
-    if Toggles.AntiVoid and string.find(objName, "void") then
-        local p = obj.Parent
-        if p and (string.find(string.lower(p.Name), "locker") or string.find(string.lower(p.Name), "wardrobe")) then
-            removeESP(p); local prompt = p:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if prompt then prompt.Enabled = false end return
-        end
-    end
-
-    if objName == "normaldoor" or objName == "nextdoor" or (obj:IsA("Model") and string.find(objName, "door") and obj:FindFirstChildWhichIsA("ProximityPrompt", true)) then
-        if not ESP_Cache[obj] then createESP(obj, "🚪 Porte", Color3.new(1,1,1), "Door") end return
-    end
-
-    for pw, col in pairs(PasswordList) do
-        if string.find(objName, pw) then if not ESP_Cache[obj] then createESP(obj, "🔑 Password", col, "Code") end return end
-    end
-
-    for ent, col in pairs(EntityList) do
-        if string.find(objName, ent) then
-            if ent == "searchlight" and string.find(objName, "camera") then continue end
-            if ent == "eyefestation" and obj:IsA("Model") and not obj:FindFirstChild("Eye") then continue end
-            if not ESP_Cache[obj] then
-                createESP(obj, ent:gsub("^%l", string.upper), col, "Entity")
-                if table.find({"angler", "pinkie", "blitz", "froger", "chainsmoker", "pandemonium"}, ent) then DangerousEntitiesPresent[obj] = true end
-                if not NotifiedEntities[obj] then NotifiedEntities[obj] = true notifyUser("🚨 " .. ent:upper(), "Cachez-vous vite !") end
-            end
-            return
-        end
-    end
-
-    for item, col in pairs(ItemList) do
-        if string.find(objName, item) then
-            if not ESP_Cache[obj] and obj:FindFirstChildWhichIsA("ProximityPrompt", true) then createESP(obj, item:gsub("^%l", string.upper), col, "Item") end return
-        end
-    end
-
-    if string.find(objName, "locker") or string.find(objName, "wardrobe") then
-        if not string.find(objName, "foot") and not string.find(objName, "desk") and not ESP_Cache[obj] then
-            createESP(obj, "Cachette", Color3.fromRGB(0, 255, 127), "Locker")
-        end
-    end
-end
-
-Connections["DescendantAdded"] = Workspace.DescendantAdded:Connect(function(v)
-    checkEntity(v)
-    if v:IsA("ProximityPrompt") and v.Parent then checkEntity(v.Parent) end
-end)
-
-Connections["Update"] = RunService.Heartbeat:Connect(function()
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    local myPos = char.HumanoidRootPart.Position
-
-    -- God Mode : Câbles & Portes
-    if (Toggles.AutoCables or Toggles.ForceUnlock) then
-        pcall(function()
-            for _, obj in ipairs(Workspace:GetDescendants()) do
-                if obj:IsA("ProximityPrompt") and (char.HumanoidRootPart.Position - obj.Parent.WorldPosition).Magnitude < 15 then
-                    if Toggles.AutoCables and (string.find(string.lower(obj.Parent.Name), "cable") or string.find(string.lower(obj.Parent.Name), "generator")) then obj.HoldDuration = 0; firePrompt(obj) end
-                    if Toggles.ForceUnlock and string.find(string.lower(obj.Parent.Name), "lock") then obj.HoldDuration = 0; firePrompt(obj) end
-                end
-            end
-        end)
-    end
-
-    -- God Mode : Pandemonium
-    if Toggles.AutoPandemonium then
-        pcall(function()
-            local mg = LocalPlayer.PlayerGui:FindFirstChild("PandemoniumMinigame") or LocalPlayer.PlayerGui:FindFirstChild("Minigame")
-            if mg and mg.Enabled then
-                local s, t = mg:FindFirstChild("Slider", true), mg:FindFirstChild("Target", true)
-                if s and t then s.Position = t.Position end
-            end
-        end)
-    end
-
-    -- Aura
-    if Toggles.PlayerAura then
-        if not auraPart then
-            auraPart = Instance.new("Part", Workspace); auraPart.Size = Vector3.new(5, 0.1, 5); auraPart.Anchored = true
-            auraPart.CanCollide = false; auraPart.Material = Enum.Material.Neon; auraPart.Color = Color3.fromRGB(0, 255, 255)
-            Instance.new("CylinderMesh", auraPart)
-        end
-        auraPart.CFrame = CFrame.new(char.HumanoidRootPart.Position - Vector3.new(0, 3, 0)) * CFrame.Angles(0, tick() * 2, 0)
-    else
-        if auraPart then auraPart:Destroy() auraPart = nil end
-    end
-
-    -- Render ESP Fixé
-    for ent, data in pairs(ESP_Cache) do
-        if ent and ent.Parent then
-            local p = getEntityPosition(ent)
-            if p then
-                local d = (myPos - p).Magnitude
-                local show = Toggles[data.Type .. "ESP"] or (data.Type == "Code" and Toggles.CodeESP)
-                
-                if Toggles.AutoLoot and d < 15 and data.Type == "Item" then
-                    local pr = ent:FindFirstChildWhichIsA("ProximityPrompt", true)
-                    if pr and pr.Enabled then firePrompt(pr) end
-                end
-
-                if show and d < 2000 then
-                    if data.Highlight then data.Highlight.Enabled = true end
-                    data.Billboard.Enabled = true
-                    data.Label.Text = string.format("%s\n[%dm]", data.DisplayName, math.floor(d))
-                else
-                    if data.Highlight then data.Highlight.Enabled = false end
-                    data.Billboard.Enabled = false
-                end
-            end
-        else removeESP(ent) end
-    end
-end)
-
--- ==========================================
--- BOUTON FLOTTANT MOBILE (FORCÉ)
--- ==========================================
-local MobileGui = nil
-if isMobile then
-    MobileGui = Instance.new("ScreenGui", guiParent)
-    MobileGui.Name = "MokzMobileToggle"
-    MobileGui.ResetOnSpawn = false
-
-    local ToggleBtn = Instance.new("TextButton", MobileGui)
-    ToggleBtn.Size = UDim2.new(0, 45, 0, 45); ToggleBtn.Position = UDim2.new(0, 10, 0, 10)
-    ToggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 20); ToggleBtn.Text = "🌊"; ToggleBtn.TextSize = 20
-    Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
-    local Stroke = Instance.new("UIStroke", ToggleBtn); Stroke.Color = Color3.fromRGB(0, 255, 255); Stroke.Thickness = 2
-
-    ToggleBtn.MouseButton1Click:Connect(function()
-        VirtualInputManager:SendKeyEvent(true, Toggles.MinimizeKeyBind, false, game)
-        task.wait(0.05)
-        VirtualInputManager:SendKeyEvent(false, Toggles.MinimizeKeyBind, false, game)
+    task.spawn(function()
+        task.wait(4.5)
+        TweenService:Create(card, TweenInfo.new(0.4), { Size = UDim2.new(0, 0, 0, 60), BackgroundTransparency = 1 }):Play()
+        TweenService:Create(stroke, TweenInfo.new(0.4), { Transparency = 1 }):Play()
+        TweenService:Create(titleLbl, TweenInfo.new(0.4), { TextTransparency = 1 }):Play()
+        TweenService:Create(descLbl, TweenInfo.new(0.4), { TextTransparency = 1 }):Play()
+        task.wait(0.4); card:Destroy()
     end)
-
-    local drag, dStart, sPos
-    ToggleBtn.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then drag = true dStart = i.Position sPos = ToggleBtn.Position end end)
-    UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType == Enum.UserInputType.Touch then local delta = i.Position - dStart; ToggleBtn.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + delta.X, sPos.Y.Scale, sPos.Y.Offset + delta.Y) end end)
-    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then drag = false end end)
 end
 
--- ==========================================
--- ONGLETS FLUENT UI ORGANISÉS
--- ==========================================
--- TAB 1 : MAIN
-Tabs.Main:AddToggle("Notifs", {Title = "Notifications Entités", Default = false}):OnChanged(function(v) Toggles.Notifications = v end)
-Tabs.Main:AddToggle("Safezone", {Title = "Auto Safezone (Cachette)", Default = false}):OnChanged(function(v) Toggles.AutoSafezone = v end)
-Tabs.Main:AddToggle("Loot", {Title = "Auto-Loot (Ramassage auto)", Default = false}):OnChanged(function(v) Toggles.AutoLoot = v end)
+-- ══════════════════════════════════
+--     CRÉATION DU MENU PRINCIPAL
+-- ══════════════════════════════════
+local Main = create("Frame", { Size = MainSize, Position = MainPos, BackgroundColor3 = Colors.Bg, Parent = ScreenGui, Active = true, Draggable = true })
+create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = Main })
+create("UIStroke", { Color = Colors.Accent, Thickness = 1.5, Parent = Main })
 
--- TAB 2 : MINI-JEUX
-Tabs.Minigames:AddParagraph({Title = "Assistance Avancée", Content = "Ces fonctions automatisent les mécaniques complexes du jeu."})
-Tabs.Minigames:AddToggle("AutoPande", {Title = "Auto-Pandemonium", Default = false}):OnChanged(function(v) Toggles.AutoPandemonium = v end)
-Tabs.Minigames:AddToggle("AutoCable", {Title = "Auto-Câbles/Générateurs", Default = false}):OnChanged(function(v) Toggles.AutoCables = v end)
-Tabs.Minigames:AddToggle("ForceDoor", {Title = "Forcer Portes Verrouillées", Default = false}):OnChanged(function(v) Toggles.ForceUnlock = v end)
+local Sidebar = create("Frame", { Size = UDim2.new(0, SidebarWidth, 1, 0), BackgroundColor3 = Colors.Sidebar, Parent = Main })
+create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = Sidebar })
+create("Frame", { Size = UDim2.new(0, 10, 1, 0), Position = UDim2.new(1, -10, 0, 0), BackgroundColor3 = Colors.Sidebar, BorderSizePixel = 0, Parent = Sidebar })
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 60), BackgroundTransparency = 1, Text = "MOHA HUB\n[PRESSURE]", TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = isMobile and 14 or 18, Parent = Sidebar })
 
--- TAB 3 : VISUELS & ESP (TOUT EST ICI MAINTENANT)
-Tabs.Visuals:AddParagraph({Title = "Système ESP", Content = "Active la vision à travers les murs."})
-Tabs.Visuals:AddToggle("EntityESP", {Title = "ESP Monstres / Entités", Default = false}):OnChanged(function(v) Toggles.EntityESP = v end)
-Tabs.Visuals:AddToggle("ItemESP", {Title = "ESP Objets (Clés, Piles...)", Default = false}):OnChanged(function(v) Toggles.ItemESP = v end)
-Tabs.Visuals:AddToggle("DoorESP", {Title = "ESP Portes", Default = false}):OnChanged(function(v) Toggles.DoorESP = v end)
-Tabs.Visuals:AddToggle("CodeESP", {Title = "ESP Codes / Terminaux", Default = false}):OnChanged(function(v) Toggles.CodeESP = v end)
-Tabs.Visuals:AddToggle("LockerESP", {Title = "ESP Casiers Sécurisés", Default = false}):OnChanged(function(v) Toggles.LockerESP = v end)
+local PagesFolder = create("Folder", { Parent = Main })
+local tabsData = {}
 
-Tabs.Visuals:AddParagraph({Title = "Modifications d'Écran", Content = "Améliore la visibilité globale."})
-Tabs.Visuals:AddToggle("Fullbright", {Title = "Fullbright (Lumière max)", Default = false}):OnChanged(function(v) Toggles.Fullbright = v Lighting.Brightness = v and 2 or 1 Lighting.Ambient = v and Color3.new(1,1,1) or Color3.new(0,0,0) end)
-Tabs.Visuals:AddToggle("NoFog", {Title = "Retirer le Brouillard", Default = false}):OnChanged(function(v) Toggles.NoFog = v end)
-Tabs.Visuals:AddToggle("Aura", {Title = "Aura Joueur Céleste", Default = false}):OnChanged(function(v) Toggles.PlayerAura = v end)
+local function CreateTab(name, icon, yPos)
+    local btn = create("TextButton", { Size = UDim2.new(0, SidebarWidth - 20, 0, 35), Position = UDim2.new(0, 10, 0, yPos), BackgroundColor3 = Colors.CardBg, Text = "", AutoButtonColor = false, Parent = Sidebar })
+    create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = btn })
+    local stroke = create("UIStroke", { Color = Colors.Accent, Thickness = 1, Transparency = 1, Parent = btn })
+    create("TextLabel", { Size = UDim2.new(0, 25, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, Text = icon, TextColor3 = Colors.Text, Font = Enum.Font.Gotham, TextSize = 16, Parent = btn })
+    create("TextLabel", { Size = UDim2.new(1, -35, 1, 0), Position = UDim2.new(0, 30, 0, 0), BackgroundTransparency = 1, Text = name, TextColor3 = Colors.Text, Font = Enum.Font.GothamBold, TextSize = isMobile and 11 or 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = btn })
 
--- TAB 4 : MODS
-Tabs.Mods:AddToggle("CFSpeed", {Title = "Vitesse CFrame", Default = false}):OnChanged(function(v) Toggles.CFrameSpeed = v end)
-Tabs.Mods:AddSlider("SurfSpeed", {Title = "Vitesse Surface", Min = 1, Max = 10, Default = 1, Callback = function(v) Toggles.SpeedSurface = v end})
-Tabs.Mods:AddSlider("WatSpeed", {Title = "Vitesse Eaux", Min = 1, Max = 10, Default = 1, Callback = function(v) Toggles.SpeedWater = v end})
-Tabs.Mods:AddToggle("AVoid", {Title = "Anti-Void Mass", Default = true}):OnChanged(function(v) Toggles.AntiVoid = v end)
+    local page = create("ScrollingFrame", { Size = UDim2.new(1, -(SidebarWidth + 20), 1, -20), Position = UDim2.new(0, SidebarWidth + 10, 0, 10), BackgroundTransparency = 1, ScrollBarThickness = 4, ScrollBarImageColor3 = Colors.Accent, CanvasSize = UDim2.new(0, 0, 0, 0), Visible = false, Parent = PagesFolder })
+    create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8), Parent = page })
+    table.insert(tabsData, { Button = btn, Page = page, Stroke = stroke })
 
--- TAB 5 : SETTINGS
-Tabs.Settings:AddKeybind("MenuKey", {Title = "Touche Menu", Default = "RightControl", ChangedCallback = function(v) Window.MinimizeKey = v end})
-Tabs.Settings:AddButton({Title = "Unload Script (Détruire)", Callback = function() getgenv().PressurePremium_Unload() end})
-
--- ==========================================
--- UNLOAD
--- ==========================================
-getgenv().PressurePremium_Unload = function()
-    for _, c in pairs(Connections) do pcall(function() c:Disconnect() end) end
-    for e, _ in pairs(ESP_Cache) do removeESP(e) end
-    if ESP_Folder then ESP_Folder:Destroy() end
-    if auraPart then auraPart:Destroy() end
-    if MobileGui then MobileGui:Destroy() end
-    Window:Destroy()
-    getgenv().PressurePremium_Loaded = false
+    btn.MouseButton1Click:Connect(function()
+        for _, t in pairs(tabsData) do t.Page.Visible = false; t.Stroke.Transparency = 1; t.Button.BackgroundColor3 = Colors.CardBg end
+        page.Visible = true; stroke.Transparency = 0; btn.BackgroundColor3 = Color3.fromRGB(25, 35, 50)
+    end)
+    return page
 end
 
-for _, v in ipairs(Workspace:GetDescendants()) do task.spawn(checkEntity, v) end
-Fluent:Notify({Title = "Pressure Premium", Content = "Script Chargé ! Bouton mobile activé 🌊", Duration = 5})
+local function CreateToggle(parent, text, key, callback, customColor)
+    local frame = create("Frame", { Size = UDim2.new(1, -10, 0, 40), BackgroundColor3 = Colors.CardBg, Parent = parent })
+    create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = frame })
+    create("TextLabel", { Size = UDim2.new(1, -60, 1, 0), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Text = text, TextColor3 = Colors.Text, Font = Enum.Font.GothamBold, TextSize = isMobile and 11 or 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+    
+    local activeColor = customColor or Colors.Accent
+    local btn = create("TextButton", { Size = UDim2.new(0, 40, 0, 20), Position = UDim2.new(1, -50, 0.5, -10), BackgroundColor3 = Toggles[key] and activeColor or Color3.fromRGB(40, 45, 50), Text = "", Parent = frame })
+    create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = btn })
+    local circle = create("Frame", { Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(Toggles[key] and 1 or 0, Toggles[key] and -18 or 2, 0.5, -8), BackgroundColor3 = Colors.Text, Parent = btn })
+    create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = circle })
+
+    btn.MouseButton1Click:Connect(function()
+        Toggles[key] = not Toggles[key]
+        TweenService:Create(btn, TweenInfo.new(0.2), { BackgroundColor3 = Toggles[key] and activeColor or Color3.fromRGB(40, 45, 50) }):Play()
+        TweenService:Create(circle, TweenInfo.new(0.2), { Position = UDim2.new(Toggles[key] and 1 or 0, Toggles[key] and -18 or 2, 0.5, -8) }):Play()
+        if callback then callback(Toggles[key]) end
+    end)
+end
+
+local TabScanner  = CreateTab("Scanner (ESP)", "👁️", 70)
+local TabFilters  = CreateTab("Filtres ESP", "🐙", 115)
+local TabDeleter  = CreateTab("Godmode Deleter", "🗑️", 160)
+local TabCheats   = CreateTab("Exploits & Auto", "⚡", 205)
+
+tabsData[1].Button.BackgroundColor3 = Color3.fromRGB(25, 35, 50); tabsData[1].Stroke.Transparency = 0; tabsData[1].Page.Visible = true
+
+-- ══════════════════════════════════
+--     LOGIQUE DELETER ULTIME
+-- ══════════════════════════════════
+local function SweepEntities()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if not obj or not obj.Parent then continue end
+        local name = obj.Name:lower()
+
+        if Toggles.Del_Eyefestation and name:find("eyefestation") and not name:find("enraged") then obj:Destroy() end
+        if Toggles.Del_EnragedEyefestation and name:find("enraged") and name:find("eyefestation") then obj:Destroy() end
+        if Toggles.Del_Searchlights and name:find("searchlight") then obj:Destroy() end
+        if Toggles.Del_ChaseSteam and name:find("steam") then obj:Destroy() end
+        if Toggles.Del_ChaseFan and name:find("fan") then obj:Destroy() end
+        if Toggles.Del_Fish and name:find("fish") then obj:Destroy() end
+        if Toggles.Del_Abomination and name:find("abomination") then obj:Destroy() end
+        if Toggles.Del_Pipsqueak and name:find("pipsqueak") then obj:Destroy() end
+        if Toggles.Del_Baldi and name:find("baldi") then obj:Destroy() end
+        if Toggles.Del_Bouncer and name:find("bouncer") then obj:Destroy() end
+        if Toggles.Del_Turret and name:find("turret") then obj:Destroy() end
+        if Toggles.Del_Pandemonium and name:find("pandemonium") then obj:Destroy() end
+        if Toggles.Del_Statue and name:find("statue") and not name:find("bigger") then obj:Destroy() end
+        if Toggles.Del_BiggerStatue and name:find("bigger") and name:find("statue") then obj:Destroy() end
+        if Toggles.Del_DiVine and name:find("divine") then obj:Destroy() end
+        if Toggles.Del_Skeleipede and (name:find("skelepede") or name:find("skeleipede")) then obj:Destroy() end
+        if Toggles.Del_Parasite and name:find("parasite") then obj:Destroy() end
+    end
+end
+task.spawn(function() while task.wait(0.3) do SweepEntities() end end)
+
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Supprimer Principaux :", TextColor3 = Colors.Delete, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabDeleter })
+CreateToggle(TabDeleter, "🗑️ Remove Eyefestation", "Del_Eyefestation", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Enraged Eyefestation", "Del_EnragedEyefestation", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Pandemonium", "Del_Pandemonium", nil, Colors.Delete)
+
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Supprimer Secondaires & Pièges :", TextColor3 = Colors.Delete, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabDeleter })
+CreateToggle(TabDeleter, "🗑️ Remove Searchlights", "Del_Searchlights", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Chase Steam", "Del_ChaseSteam", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Chase Fan", "Del_ChaseFan", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Turret", "Del_Turret", nil, Colors.Delete)
+
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Supprimer les Autres :", TextColor3 = Colors.Delete, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabDeleter })
+CreateToggle(TabDeleter, "🗑️ Remove Fish", "Del_Fish", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Abomination", "Del_Abomination", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Pipsqueak", "Del_Pipsqueak", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Baldi", "Del_Baldi", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Bouncer", "Del_Bouncer", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Statue", "Del_Statue", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Bigger Statue", "Del_BiggerStatue", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove DiVine", "Del_DiVine", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Skeleipede", "Del_Skeleipede", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Parasite", "Del_Parasite", nil, Colors.Delete)
+TabDeleter.CanvasSize = UDim2.new(0,0,0, 950)
+
+-- ══════════════════════════════════
+--     LOGIQUE DU SCANNER STRICT (ESP)
+-- ══════════════════════════════════
+local ESPFolder = create("Folder", { Name = "MohaESP", Parent = CoreGui })
+local function ClearESP() for _, child in pairs(ESPFolder:GetChildren()) do child:Destroy() end end
+
+local function CreateESP(obj, text, color)
+    if not obj or not obj.Parent then return end
+    local hl = create("Highlight", { Parent = ESPFolder, Adornee = obj, FillColor = color, OutlineColor = color, FillTransparency = 0.75, OutlineTransparency = 0.2, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop })
+    local bb = create("BillboardGui", { Parent = ESPFolder, Adornee = obj, Size = UDim2.new(0, 200, 0, 50), AlwaysOnTop = true, StudsOffset = Vector3.new(0, 2, 0) })
+    create("TextLabel", { Parent = bb, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = text, TextColor3 = color, Font = Enum.Font.GothamBold, TextSize = 13, TextStrokeTransparency = 0 })
+end
+
+local function RefreshESP()
+    ClearESP()
+    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+    local hrpPos = LocalPlayer.Character.HumanoidRootPart.Position
+    local nearestDoor = nil; local shortestDist = math.huge
+
+    for _, obj in pairs(workspace:GetDescendants()) do
+        local name = obj.Name:lower()
+        
+        -- MONSTRES
+        if name:find("angler") and Toggles.Ent_Angler then CreateESP(obj, "⚠️ Angler", Colors.Monster)
+        elseif name:find("pinkie") and Toggles.Ent_Pinkie then CreateESP(obj, "⚠️ Pinkie", Colors.Monster)
+        elseif name:find("blitz") and Toggles.Ent_Blitz then CreateESP(obj, "⚠️ Blitz", Colors.Monster)
+        elseif name:find("chainsmoker") and Toggles.Ent_Chainsmoker then CreateESP(obj, "⚠️ Chainsmoker", Colors.Monster)
+        elseif name:find("froger") and Toggles.Ent_Froger then CreateESP(obj, "⚠️ Froger", Colors.Monster)
+        elseif name:find("pandemonium") and Toggles.Ent_Pandemonium then CreateESP(obj, "⚠️ Pandemonium", Colors.Monster)
+        elseif name:find("eyefestation") and Toggles.Ent_Eyefestation then CreateESP(obj, "👁️ Eyefestation", Color3.fromRGB(150, 0, 255))
+        elseif name:find("walldweller") and Toggles.Ent_WallDweller then CreateESP(obj, "👀 Wall Dweller", Color3.fromRGB(200, 100, 100))
+        end
+        
+        -- ITEMS, CLÉS ET PASSWORDS (FILTRE STRICT : Doit avoir un bouton d'interaction)
+        if Toggles.ESPItems and (obj:IsA("Model") or obj:IsA("BasePart")) then
+            -- On vérifie s'il y a un vrai bouton "E" dessus pour éviter de ping le décor
+            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then
+                if name:find("keycard") or name:find("key") then CreateESP(obj, "🔑 " .. obj.Name, Colors.Door)
+                elseif name:find("medkit") or name:find("battery") or name:find("flashlight") or name:find("breacher") then CreateESP(obj, "📦 " .. obj.Name, Colors.Item)
+                elseif name:find("code") or name:find("paper") or name:find("folder") or name:find("password") then CreateESP(obj, "📝 Code / Info", Colors.Door) end
+            end
+        end
+
+        -- CURRENCY (FILTRE STRICT)
+        if Toggles.ESPCurrency and (obj:IsA("Model") or obj:IsA("BasePart")) then
+            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt and (name:find("kroner") or name:find("coin") or name:find("currency")) then 
+                CreateESP(obj, "💰 Monnaie", Colors.Currency) 
+            end
+        end
+        
+        -- PORTES INTELLIGENTES & ANTI-FAUSSES PORTES
+        if Toggles.ESPDoors and obj:IsA("Model") and (name:find("door") or name:find("nextroom")) then
+            if not (name:find("fake") or name:find("trick") or name:find("mimic") or name:find("dupe")) then
+                local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                if prompt and prompt.Enabled then
+                    local dist = (obj:GetPivot().Position - hrpPos).Magnitude
+                    if dist < shortestDist then shortestDist = dist; nearestDoor = obj end
+                end
+            end
+        end
+        
+        -- CASIERS
+        if Toggles.ESPLockers and obj:IsA("Model") then
+            local isLocker = name:find("locker") or name:find("wardrobe") or name:find("closet")
+            if isLocker and not (name:find("drawer") or name:find("shelf") or name:find("desk") or name:find("table")) then
+                local isTrapped = false
+                for _, child in pairs(obj:GetChildren()) do if child.Name:lower():find("void") then isTrapped = true break end end
+                if not isTrapped then CreateESP(obj, "🗄️ Cachette", Color3.fromRGB(150, 150, 150)) end
+            end
+        end
+    end
+
+    if Toggles.ESPDoors and nearestDoor then CreateESP(nearestDoor, "🚪 VRAIE PROCHAINE PORTE", Colors.Accent) end
+end
+task.spawn(function() while task.wait(1) do RefreshESP() end end)
+
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Scanner des objets et zones :", TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = isMobile and 11 or 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabScanner })
+CreateToggle(TabScanner, "💰 Monnaie/Kroner (Doré)", "ESPCurrency")
+CreateToggle(TabScanner, "📦 Vrais Objets & Passwords (Vert)", "ESPItems")
+CreateToggle(TabScanner, "🚪 Vraie Porte Principale (Cyan)", "ESPDoors")
+CreateToggle(TabScanner, "🗄️ Cachettes Sûres (Gris)", "ESPLockers")
+TabScanner.CanvasSize = UDim2.new(0,0,0, 250)
+
+-- ══════════════════════════════════
+--     ONGLET FILTRES ESP
+-- ══════════════════════════════════
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Voir les monstres (ESP) :", TextColor3 = Colors.Monster, Font = Enum.Font.GothamBold, TextSize = isMobile and 11 or 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabFilters })
+CreateToggle(TabFilters, "⚠️ Angler", "Ent_Angler")
+CreateToggle(TabFilters, "⚠️ Pinkie", "Ent_Pinkie")
+CreateToggle(TabFilters, "⚠️ Blitz", "Ent_Blitz")
+CreateToggle(TabFilters, "⚠️ Chainsmoker", "Ent_Chainsmoker")
+CreateToggle(TabFilters, "⚠️ Froger", "Ent_Froger")
+CreateToggle(TabFilters, "⚠️ Pandemonium", "Ent_Pandemonium")
+CreateToggle(TabFilters, "👁️ Eyefestation", "Ent_Eyefestation")
+CreateToggle(TabFilters, "👀 Wall Dweller", "Ent_WallDweller")
+TabFilters.CanvasSize = UDim2.new(0,0,0, 420)
+
+-- ══════════════════════════════════
+--     LOGIQUE DES EXPLOITS & AUTO
+-- ══════════════════════════════════
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Automatisation :", TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = isMobile and 11 or 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabCheats })
+
+CreateToggle(TabCheats, "✨ Auto-Loot Total (Monnaie, Passwords, etc)", "AutoLoot")
+CreateToggle(TabCheats, "⚡ Instant Interact Infaillible", "InstantInteract")
+
+-- INSTANT INTERACT FORCÉ
+RunService.RenderStepped:Connect(function()
+    if Toggles.InstantInteract then
+        for _, prompt in pairs(workspace:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") then prompt.HoldDuration = 0 end
+        end
+    end
+end)
+
+-- AUTO-LOOT TOTAL
+task.spawn(function()
+    while task.wait(0.3) do
+        if Toggles.AutoLoot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local hrpPos = LocalPlayer.Character.HumanoidRootPart.Position
+            for _, prompt in pairs(workspace:GetDescendants()) do
+                if prompt:IsA("ProximityPrompt") and prompt.Enabled and prompt.Parent then
+                    local name = prompt.Parent.Name:lower()
+                    if name:find("key") or name:find("kroner") or name:find("coin") or name:find("medkit") or name:find("battery") or name:find("code") or name:find("paper") or name:find("folder") or name:find("crystal") then
+                        if (prompt.Parent:GetPivot().Position - hrpPos).Magnitude < 16 then
+                            fireproximityprompt(prompt)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Survie :", TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = isMobile and 11 or 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabCheats })
+CreateToggle(TabCheats, "💡 Fullbright (Vision nocturne)", "Fullbright", function(state)
+    if state then
+        getgenv().LightingConn = RunService.RenderStepped:Connect(function()
+            Lighting.Ambient = Color3.new(1, 1, 1); Lighting.Brightness = 3; Lighting.GlobalShadows = false; Lighting.FogEnd = 100000
+        end)
+    else
+        if getgenv().LightingConn then getgenv().LightingConn:Disconnect() end
+        Lighting.GlobalShadows = true; Lighting.FogEnd = 250
+    end
+end)
+
+CreateToggle(TabCheats, "🔔 Activer l'Alarme Custom (Bas-Droite)", "AlarmEnabled")
+workspace.ChildAdded:Connect(function(obj)
+    if Toggles.AlarmEnabled then
+        local name = obj.Name:lower()
+        if (name:find("angler") and Toggles.Ent_Angler) or (name:find("pinkie") and Toggles.Ent_Pinkie) or 
+           (name:find("chainsmoker") and Toggles.Ent_Chainsmoker) or (name:find("blitz") and Toggles.Ent_Blitz) or 
+           (name:find("froger") and Toggles.Ent_Froger) or (name:find("pandemonium") and Toggles.Ent_Pandemonium) then
+            ShowCustomAlert("⚠️ MONSTRE DÉTECTÉ", "Un " .. obj.Name .. " arrive ! Cherche un casier !", Colors.Monster)
+        end
+    end
+end)
+
+TabCheats.CanvasSize = UDim2.new(0,0,0, 250)
+
+-- ══════════════════════════════════
+--     BOUTON MOBILE FLOTTANT
+-- ══════════════════════════════════
+if isMobile then
+    local MobileBtn = create("TextButton", { Size = UDim2.new(0, 45, 0, 45), Position = UDim2.new(0, 10, 0, 10), BackgroundColor3 = Colors.Bg, Text = "🌊", TextColor3 = Colors.AccentGlow, Font = Enum.Font.GothamBold, TextSize = 22, Parent = ScreenGui })
+    create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = MobileBtn })
+    create("UIStroke", { Color = Colors.Accent, Thickness = 2, Parent = MobileBtn })
+    MobileBtn.MouseButton1Click:Connect(function() Main.Visible = not Main.Visible end)
+    local drag, start, pos
+    MobileBtn.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then drag = true start = i.Position pos = MobileBtn.Position end end)
+    UIS.InputChanged:Connect(function(i) if drag and i.UserInputType == Enum.UserInputType.Touch then local delta = i.Position - start; MobileBtn.Position = UDim2.new(pos.X.Scale, pos.X.Offset + delta.X, pos.Y.Scale, pos.Y.Offset + delta.Y) end end)
+    UIS.InputEnded:Connect(function() drag = false end)
+end
+
+getgenv().MohaPressure_Unload = function() ScreenGui:Destroy(); ClearESP(); getgenv().MohaPressure_Loaded = false end
+print("🌊 MOHA HUB V1.9 [PRESSURE] - ESP STRICT & ANTI-FAKE DOORS CHARGÉ !")
