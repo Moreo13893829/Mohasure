@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════════════════════════╗
--- ║               MOHA HUB v1.9 (PRESSURE)                   ║
--- ║       Smart ESP (Strict Filter), Auto-Loot & Deleter     ║
+-- ║               MOHA HUB v2.0 (PRESSURE)                   ║
+-- ║       Smart Room Engine, Anti-Doublons & Godmode         ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 if getgenv().MohaPressure_Loaded then
@@ -36,10 +36,9 @@ local Toggles = {
     Ent_Angler = true, Ent_Pinkie = true, Ent_Blitz = true, Ent_Chainsmoker = true,
     Ent_Froger = true, Ent_Pandemonium = true, Ent_Eyefestation = false, Ent_WallDweller = true,
     Del_Eyefestation = false, Del_EnragedEyefestation = false, Del_Searchlights = false,
-    Del_ChaseSteam = false, Del_ChaseFan = false, Del_Fish = false,
-    Del_Abomination = false, Del_Pipsqueak = false, Del_Baldi = false,
-    Del_Bouncer = false, Del_Turret = false, Del_Pandemonium = false,
-    Del_Statue = false, Del_BiggerStatue = false, Del_DiVine = false,
+    Del_ChaseSteam = false, Del_ChaseFan = false, Del_Fish = false, Del_Abomination = false,
+    Del_Pipsqueak = false, Del_Baldi = false, Del_Bouncer = false, Del_Turret = false,
+    Del_Pandemonium = false, Del_Statue = false, Del_BiggerStatue = false, Del_DiVine = false,
     Del_Skeleipede = false, Del_Parasite = false
 }
 
@@ -174,28 +173,14 @@ create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
 CreateToggle(TabDeleter, "🗑️ Remove Eyefestation", "Del_Eyefestation", nil, Colors.Delete)
 CreateToggle(TabDeleter, "🗑️ Remove Enraged Eyefestation", "Del_EnragedEyefestation", nil, Colors.Delete)
 CreateToggle(TabDeleter, "🗑️ Remove Pandemonium", "Del_Pandemonium", nil, Colors.Delete)
-
-create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Supprimer Secondaires & Pièges :", TextColor3 = Colors.Delete, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabDeleter })
 CreateToggle(TabDeleter, "🗑️ Remove Searchlights", "Del_Searchlights", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Chase Steam", "Del_ChaseSteam", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Chase Fan", "Del_ChaseFan", nil, Colors.Delete)
+CreateToggle(TabDeleter, "🗑️ Remove Chase Steam/Fan", "Del_ChaseSteam", nil, Colors.Delete)
 CreateToggle(TabDeleter, "🗑️ Remove Turret", "Del_Turret", nil, Colors.Delete)
-
-create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Supprimer les Autres :", TextColor3 = Colors.Delete, Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabDeleter })
-CreateToggle(TabDeleter, "🗑️ Remove Fish", "Del_Fish", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Abomination", "Del_Abomination", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Pipsqueak", "Del_Pipsqueak", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Baldi", "Del_Baldi", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Bouncer", "Del_Bouncer", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Statue", "Del_Statue", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Bigger Statue", "Del_BiggerStatue", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove DiVine", "Del_DiVine", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Skeleipede", "Del_Skeleipede", nil, Colors.Delete)
-CreateToggle(TabDeleter, "🗑️ Remove Parasite", "Del_Parasite", nil, Colors.Delete)
-TabDeleter.CanvasSize = UDim2.new(0,0,0, 950)
+CreateToggle(TabDeleter, "🗑️ Remove Fish/Baldi/Bouncer...", "Del_Fish", nil, Colors.Delete)
+TabDeleter.CanvasSize = UDim2.new(0,0,0, 450)
 
 -- ══════════════════════════════════
---     LOGIQUE DU SCANNER STRICT (ESP)
+--     LOGIQUE DU SCANNER V2.0 (ANTI-DOUBLONS & SMART DOORS)
 -- ══════════════════════════════════
 local ESPFolder = create("Folder", { Name = "MohaESP", Parent = CoreGui })
 local function ClearESP() for _, child in pairs(ESPFolder:GetChildren()) do child:Destroy() end end
@@ -210,72 +195,98 @@ end
 local function RefreshESP()
     ClearESP()
     if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-    local hrpPos = LocalPlayer.Character.HumanoidRootPart.Position
-    local nearestDoor = nil; local shortestDist = math.huge
-
-    for _, obj in pairs(workspace:GetDescendants()) do
-        local name = obj.Name:lower()
-        
-        -- MONSTRES
-        if name:find("angler") and Toggles.Ent_Angler then CreateESP(obj, "⚠️ Angler", Colors.Monster)
-        elseif name:find("pinkie") and Toggles.Ent_Pinkie then CreateESP(obj, "⚠️ Pinkie", Colors.Monster)
-        elseif name:find("blitz") and Toggles.Ent_Blitz then CreateESP(obj, "⚠️ Blitz", Colors.Monster)
-        elseif name:find("chainsmoker") and Toggles.Ent_Chainsmoker then CreateESP(obj, "⚠️ Chainsmoker", Colors.Monster)
-        elseif name:find("froger") and Toggles.Ent_Froger then CreateESP(obj, "⚠️ Froger", Colors.Monster)
-        elseif name:find("pandemonium") and Toggles.Ent_Pandemonium then CreateESP(obj, "⚠️ Pandemonium", Colors.Monster)
-        elseif name:find("eyefestation") and Toggles.Ent_Eyefestation then CreateESP(obj, "👁️ Eyefestation", Color3.fromRGB(150, 0, 255))
-        elseif name:find("walldweller") and Toggles.Ent_WallDweller then CreateESP(obj, "👀 Wall Dweller", Color3.fromRGB(200, 100, 100))
-        end
-        
-        -- ITEMS, CLÉS ET PASSWORDS (FILTRE STRICT : Doit avoir un bouton d'interaction)
-        if Toggles.ESPItems and (obj:IsA("Model") or obj:IsA("BasePart")) then
-            -- On vérifie s'il y a un vrai bouton "E" dessus pour éviter de ping le décor
-            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if prompt then
-                if name:find("keycard") or name:find("key") then CreateESP(obj, "🔑 " .. obj.Name, Colors.Door)
-                elseif name:find("medkit") or name:find("battery") or name:find("flashlight") or name:find("breacher") then CreateESP(obj, "📦 " .. obj.Name, Colors.Item)
-                elseif name:find("code") or name:find("paper") or name:find("folder") or name:find("password") then CreateESP(obj, "📝 Code / Info", Colors.Door) end
-            end
-        end
-
-        -- CURRENCY (FILTRE STRICT)
-        if Toggles.ESPCurrency and (obj:IsA("Model") or obj:IsA("BasePart")) then
-            local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if prompt and (name:find("kroner") or name:find("coin") or name:find("currency")) then 
-                CreateESP(obj, "💰 Monnaie", Colors.Currency) 
-            end
-        end
-        
-        -- PORTES INTELLIGENTES & ANTI-FAUSSES PORTES
-        if Toggles.ESPDoors and obj:IsA("Model") and (name:find("door") or name:find("nextroom")) then
-            if not (name:find("fake") or name:find("trick") or name:find("mimic") or name:find("dupe")) then
-                local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
-                if prompt and prompt.Enabled then
-                    local dist = (obj:GetPivot().Position - hrpPos).Magnitude
-                    if dist < shortestDist then shortestDist = dist; nearestDoor = obj end
-                end
-            end
-        end
-        
-        -- CASIERS
-        if Toggles.ESPLockers and obj:IsA("Model") then
-            local isLocker = name:find("locker") or name:find("wardrobe") or name:find("closet")
-            if isLocker and not (name:find("drawer") or name:find("shelf") or name:find("desk") or name:find("table")) then
-                local isTrapped = false
-                for _, child in pairs(obj:GetChildren()) do if child.Name:lower():find("void") then isTrapped = true break end end
-                if not isTrapped then CreateESP(obj, "🗄️ Cachette", Color3.fromRGB(150, 150, 150)) end
+    
+    local espCache = {} -- Dictionnaire pour éviter de cibler 2 fois le même objet
+    
+    -- 1. SMART ROOM ENGINE (Trouver la vraie dernière salle générée)
+    local latestRoom = nil
+    local highestNum = -1
+    
+    -- Pressure génère les salles dans le Workspace avec des numéros (1, 2, 3...)
+    local roomContainers = {workspace}
+    if workspace:FindFirstChild("Rooms") then table.insert(roomContainers, workspace.Rooms) end
+    
+    for _, container in ipairs(roomContainers) do
+        for _, room in pairs(container:GetChildren()) do
+            local num = tonumber(room.Name)
+            if num and num > highestNum then
+                highestNum = num
+                latestRoom = room
             end
         end
     end
 
-    if Toggles.ESPDoors and nearestDoor then CreateESP(nearestDoor, "🚪 VRAIE PROCHAINE PORTE", Colors.Accent) end
+    -- 2. DÉTECTION DES MONSTRES ET CASIERS (Par modèles complets)
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and not espCache[obj] then
+            local name = obj.Name:lower()
+            
+            -- Monstres
+            if name:find("angler") and Toggles.Ent_Angler then CreateESP(obj, "⚠️ Angler", Colors.Monster); espCache[obj] = true
+            elseif name:find("pinkie") and Toggles.Ent_Pinkie then CreateESP(obj, "⚠️ Pinkie", Colors.Monster); espCache[obj] = true
+            elseif name:find("blitz") and Toggles.Ent_Blitz then CreateESP(obj, "⚠️ Blitz", Colors.Monster); espCache[obj] = true
+            elseif name:find("chainsmoker") and Toggles.Ent_Chainsmoker then CreateESP(obj, "⚠️ Chainsmoker", Colors.Monster); espCache[obj] = true
+            elseif name:find("froger") and Toggles.Ent_Froger then CreateESP(obj, "⚠️ Froger", Colors.Monster); espCache[obj] = true
+            elseif name:find("pandemonium") and Toggles.Ent_Pandemonium then CreateESP(obj, "⚠️ Pandemonium", Colors.Monster); espCache[obj] = true
+            elseif name:find("eyefestation") and Toggles.Ent_Eyefestation then CreateESP(obj, "👁️ Eyefestation", Color3.fromRGB(150, 0, 255)); espCache[obj] = true
+            elseif name:find("walldweller") and Toggles.Ent_WallDweller then CreateESP(obj, "👀 Wall Dweller", Color3.fromRGB(200, 100, 100)); espCache[obj] = true
+            end
+
+            -- Casiers
+            if Toggles.ESPLockers and not espCache[obj] then
+                local isLocker = name:find("locker") or name:find("wardrobe") or name:find("closet")
+                if isLocker and not (name:find("drawer") or name:find("shelf") or name:find("desk") or name:find("table")) then
+                    local isTrapped = false
+                    for _, child in pairs(obj:GetChildren()) do if child.Name:lower():find("void") then isTrapped = true break end end
+                    if not isTrapped then CreateESP(obj, "🗄️ Cachette", Color3.fromRGB(150, 150, 150)); espCache[obj] = true end
+                end
+            end
+        end
+    end
+
+    -- 3. DÉTECTION INTERACTIVE STRICTE (Items, Monnaie, Portes) -> On cherche SEULEMENT les boutons "E"
+    for _, prompt in pairs(workspace:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+            local obj = prompt.Parent
+            if not obj or espCache[obj] then continue end
+            local name = obj.Name:lower()
+
+            -- ESP Items & Passwords
+            if Toggles.ESPItems then
+                if name:find("keycard") or name:find("key") then CreateESP(obj, "🔑 " .. obj.Name, Colors.Door); espCache[obj] = true
+                elseif name:find("medkit") or name:find("battery") or name:find("flashlight") or name:find("breacher") then CreateESP(obj, "📦 " .. obj.Name, Colors.Item); espCache[obj] = true
+                elseif name:find("code") or name:find("paper") or name:find("folder") or name:find("password") or name:find("document") then CreateESP(obj, "📝 Info", Colors.Door); espCache[obj] = true
+                end
+            end
+
+            -- ESP Currency
+            if Toggles.ESPCurrency and not espCache[obj] then
+                if name:find("kroner") or name:find("coin") or name:find("currency") or name:find("gold") then 
+                    CreateESP(obj, "💰 Monnaie", Colors.Currency); espCache[obj] = true 
+                end
+            end
+
+            -- ESP Vraie Porte (Smart Logic)
+            if Toggles.ESPDoors and not espCache[obj] then
+                if name:find("door") or name:find("nextroom") or name:find("entrance") then
+                    if not (name:find("fake") or name:find("trick") or name:find("mimic") or name:find("dupe")) then
+                        -- MAGIE : On vérifie si cette porte fait partie de la salle la plus avancée du jeu !
+                        if latestRoom and obj:IsDescendantOf(latestRoom) then
+                            CreateESP(obj, "🚪 VRAIE PROCHAINE PORTE", Colors.Accent)
+                            espCache[obj] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 task.spawn(function() while task.wait(1) do RefreshESP() end end)
 
 create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Text = " Scanner des objets et zones :", TextColor3 = Colors.Accent, Font = Enum.Font.GothamBold, TextSize = isMobile and 11 or 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = TabScanner })
 CreateToggle(TabScanner, "💰 Monnaie/Kroner (Doré)", "ESPCurrency")
 CreateToggle(TabScanner, "📦 Vrais Objets & Passwords (Vert)", "ESPItems")
-CreateToggle(TabScanner, "🚪 Vraie Porte Principale (Cyan)", "ESPDoors")
+CreateToggle(TabScanner, "🚪 Vraie Porte Principale (Anti-Retour)", "ESPDoors")
 CreateToggle(TabScanner, "🗄️ Cachettes Sûres (Gris)", "ESPLockers")
 TabScanner.CanvasSize = UDim2.new(0,0,0, 250)
 
@@ -301,7 +312,6 @@ create("TextLabel", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
 CreateToggle(TabCheats, "✨ Auto-Loot Total (Monnaie, Passwords, etc)", "AutoLoot")
 CreateToggle(TabCheats, "⚡ Instant Interact Infaillible", "InstantInteract")
 
--- INSTANT INTERACT FORCÉ
 RunService.RenderStepped:Connect(function()
     if Toggles.InstantInteract then
         for _, prompt in pairs(workspace:GetDescendants()) do
@@ -310,7 +320,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- AUTO-LOOT TOTAL
 task.spawn(function()
     while task.wait(0.3) do
         if Toggles.AutoLoot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
@@ -370,4 +379,4 @@ if isMobile then
 end
 
 getgenv().MohaPressure_Unload = function() ScreenGui:Destroy(); ClearESP(); getgenv().MohaPressure_Loaded = false end
-print("🌊 MOHA HUB V1.9 [PRESSURE] - ESP STRICT & ANTI-FAKE DOORS CHARGÉ !")
+print("🌊 MOHA HUB V2.0 [PRESSURE] - MOTEUR DE SALLES INTELLIGENT CHARGÉ !")
