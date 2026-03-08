@@ -2,7 +2,6 @@
 -- ║               PRESSURE PREMIUM ESP SCRIPT                ║
 -- ║         Interface Fluent UI, Optimisé & Sécurisé         ║
 -- ║         Fix des fuites de mémoire et crash CoreGui       ║
--- ║         + ADDONS GOD MODE (Mini-Jeux & Bypass)           ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- Prévention pour éviter de dupliquer l'UI
@@ -23,6 +22,9 @@ local Debris = game:GetService("Debris")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
+
+-- [AJOUT MOKZ : Détection Mobile]
+local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 
 -- ==========================================
 -- SÉCURISATION COREGUI
@@ -50,7 +52,6 @@ local DangerousEntitiesPresent = {}
 local SafezoneSavedCFrame = nil
 local IsInSafezone = false
 
--- AJOUT DES TOGGLES GOD MODE ICI
 local Toggles = {
     EntityESP = false,
     ItemESP = false,
@@ -71,7 +72,7 @@ local Toggles = {
     InWater = false,
     MinimizeKeyBind = Enum.KeyCode.RightControl,
     
-    -- Nouveaux Toggles Addons
+    -- [AJOUT MOKZ : Variables God Mode]
     AutoPandemonium = false,
     AutoCables = false,
     ForceUnlock = false,
@@ -92,9 +93,10 @@ end
 
 local Window = Fluent:CreateWindow({
     Title = "Pressure Script",
-    SubTitle = "par Moha - Premium Edition V3.0 (+ Addons)",
+    SubTitle = "par Moha - Premium Edition V3.0",
     TabWidth = 160,
-    Size = UDim2.fromOffset(630, 520),
+    -- [AJOUT MOKZ : Taille adaptative Mobile/PC]
+    Size = isMobile and UDim2.fromOffset(450, 300) or UDim2.fromOffset(630, 520),
     Acrylic = true,
     Theme = "Darker",
     MinimizeKey = Toggles.MinimizeKeyBind
@@ -105,7 +107,8 @@ local Tabs = {
     Players = Window:AddTab({ Title = "Joueurs", Icon = "users" }),
     Items = Window:AddTab({ Title = "Objets & Codes", Icon = "box" }),
     Mods = Window:AddTab({ Title = "Mods & Bypass", Icon = "zap" }),
-    Minigames = Window:AddTab({ Title = "Mini-Jeux (God)", Icon = "gamepad-2" }), -- NOUVEL ONGLET
+    -- [AJOUT MOKZ : Nouvel onglet God Mode]
+    Minigames = Window:AddTab({ Title = "Mini-Jeux (God)", Icon = "gamepad-2" }),
     Visuals = Window:AddTab({ Title = "Visuels", Icon = "eye" }),
     Settings = Window:AddTab({ Title = "Paramètres", Icon = "settings" })
 }
@@ -317,7 +320,7 @@ local function scanMap()
 end
 
 -- ==========================================
--- BOUCLE DE RENDU ET BYPASS (Moha's base)
+-- BOUCLE DE RENDU ET BYPASS
 -- ==========================================
 Connections["DescendantAdded"] = Workspace.DescendantAdded:Connect(function(v)
     checkEntity(v)
@@ -400,9 +403,7 @@ Connections["Update"] = RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ==========================================
--- LOGIQUE DES ADDONS (GOD MODE)
--- ==========================================
+-- [AJOUT MOKZ : LOGIQUE GOD MODE / MINI-JEUX]
 local auraPart = nil
 Connections["GodMode"] = RunService.RenderStepped:Connect(function()
     -- Auto Pandemonium
@@ -462,7 +463,6 @@ Connections["GodMode"] = RunService.RenderStepped:Connect(function()
     end
 end)
 
-
 -- ==========================================
 -- INTERFACE (ONGLETS)
 -- ==========================================
@@ -475,7 +475,7 @@ Tabs.Items:AddToggle("DoorESP", {Title = "Door ESP", Default = false}):OnChanged
 Tabs.Items:AddToggle("CodeESP", {Title = "Code/Password ESP", Default = false}):OnChanged(function(v) Toggles.CodeESP = v end)
 Tabs.Items:AddToggle("Loot", {Title = "Auto-Loot Aura", Default = false}):OnChanged(function(v) Toggles.AutoLoot = v end)
 
--- NOUVEL ONGLET MINI-JEUX
+-- [AJOUT MOKZ : REMPLISSAGE NOUVEL ONGLET]
 Tabs.Minigames:AddParagraph({Title = "Assistance Avancée", Content = "Ces fonctions automatisent les mécaniques complexes du jeu."})
 Tabs.Minigames:AddToggle("AutoPande", {Title = "Auto-Pandemonium (Casier)", Default = false}):OnChanged(function(v) Toggles.AutoPandemonium = v end)
 Tabs.Minigames:AddToggle("AutoCable", {Title = "Auto-Répare Câbles/Générateurs", Default = false}):OnChanged(function(v) Toggles.AutoCables = v end)
@@ -488,10 +488,36 @@ Tabs.Mods:AddToggle("AVoid", {Title = "Anti-Void Mass", Default = true}):OnChang
 
 Tabs.Visuals:AddToggle("Fullbright", {Title = "Fullbright", Default = false}):OnChanged(function(v) Toggles.Fullbright = v end)
 Tabs.Visuals:AddToggle("NoFog", {Title = "No Fog / Steam", Default = false}):OnChanged(function(v) Toggles.NoFog = v end)
-Tabs.Visuals:AddToggle("Aura", {Title = "Aura Céleste (Cosmétique)", Default = false}):OnChanged(function(v) Toggles.PlayerAura = v end) -- NOUVEAU
+Tabs.Visuals:AddToggle("Aura", {Title = "Aura Céleste", Default = false}):OnChanged(function(v) Toggles.PlayerAura = v end) -- [AJOUT MOKZ]
 
 Tabs.Settings:AddKeybind("MenuKey", {Title = "Touche Menu", Default = "RightControl", ChangedCallback = function(v) Window.MinimizeKey = v end})
 Tabs.Settings:AddButton({Title = "Unload Script", Callback = function() getgenv().PressurePremium_Unload() end})
+
+-- [AJOUT MOKZ : BOUTON FLOTTANT MOBILE]
+local MobileGui = nil
+if isMobile then
+    MobileGui = Instance.new("ScreenGui", guiParent)
+    MobileGui.Name = "MokzMobileToggle"
+    MobileGui.ResetOnSpawn = false
+
+    local ToggleBtn = Instance.new("TextButton", MobileGui)
+    ToggleBtn.Size = UDim2.new(0, 45, 0, 45); ToggleBtn.Position = UDim2.new(0, 10, 0, 10)
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 20); ToggleBtn.Text = "🌊"; ToggleBtn.TextSize = 20
+    Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
+    local Stroke = Instance.new("UIStroke", ToggleBtn); Stroke.Color = Color3.fromRGB(0, 255, 255); Stroke.Thickness = 2
+
+    ToggleBtn.MouseButton1Click:Connect(function()
+        -- Simule l'appui de la touche pour ouvrir/fermer FluentUI
+        game:GetService("VirtualInputManager"):SendKeyEvent(true, Toggles.MinimizeKeyBind, false, game)
+        task.wait(0.05)
+        game:GetService("VirtualInputManager"):SendKeyEvent(false, Toggles.MinimizeKeyBind, false, game)
+    end)
+
+    local drag, dStart, sPos
+    ToggleBtn.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then drag = true dStart = i.Position sPos = ToggleBtn.Position end end)
+    UserInputService.InputChanged:Connect(function(i) if drag and i.UserInputType == Enum.UserInputType.Touch then local delta = i.Position - dStart; ToggleBtn.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + delta.X, sPos.Y.Scale, sPos.Y.Offset + delta.Y) end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.Touch then drag = false end end)
+end
 
 -- ==========================================
 -- UNLOAD
@@ -500,10 +526,13 @@ getgenv().PressurePremium_Unload = function()
     for _, c in pairs(Connections) do pcall(function() c:Disconnect() end) end
     for e, _ in pairs(ESP_Cache) do removeESP(e) end
     if ESP_Folder then ESP_Folder:Destroy() end
+    -- [AJOUT MOKZ : Nettoyage Aura et Bouton Mobile]
     if auraPart then auraPart:Destroy() end
+    if MobileGui then MobileGui:Destroy() end
+    
     Window:Destroy()
     getgenv().PressurePremium_Loaded = false
 end
 
 scanMap()
-Fluent:Notify({Title = "Pressure Premium V3", Content = "Script Chargé avec succès !", Duration = 5})
+Fluent:Notify({Title = "Pressure Premium V3", Content = "Script Chargé ! " .. (isMobile and "Bouton mobile activé 🌊" or "Touche: RightControl"), Duration = 5})
