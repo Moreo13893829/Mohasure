@@ -2,6 +2,7 @@
 -- ║               PRESSURE PREMIUM ESP SCRIPT                ║
 -- ║         Interface Fluent UI, Optimisé & Sécurisé         ║
 -- ║         Fix des fuites de mémoire et crash CoreGui       ║
+-- ║         + ADDONS GOD MODE (Mini-Jeux & Bypass)           ║
 -- ╚══════════════════════════════════════════════════════════╝
 
 -- Prévention pour éviter de dupliquer l'UI
@@ -49,6 +50,7 @@ local DangerousEntitiesPresent = {}
 local SafezoneSavedCFrame = nil
 local IsInSafezone = false
 
+-- AJOUT DES TOGGLES GOD MODE ICI
 local Toggles = {
     EntityESP = false,
     ItemESP = false,
@@ -67,7 +69,13 @@ local Toggles = {
     SpeedSurface = 1,
     SpeedWater = 1,
     InWater = false,
-    MinimizeKeyBind = Enum.KeyCode.RightControl
+    MinimizeKeyBind = Enum.KeyCode.RightControl,
+    
+    -- Nouveaux Toggles Addons
+    AutoPandemonium = false,
+    AutoCables = false,
+    ForceUnlock = false,
+    PlayerAura = false
 }
 
 -- ==========================================
@@ -84,7 +92,7 @@ end
 
 local Window = Fluent:CreateWindow({
     Title = "Pressure Script",
-    SubTitle = "par Moha - Premium Edition V3.0",
+    SubTitle = "par Moha - Premium Edition V3.0 (+ Addons)",
     TabWidth = 160,
     Size = UDim2.fromOffset(630, 520),
     Acrylic = true,
@@ -97,6 +105,7 @@ local Tabs = {
     Players = Window:AddTab({ Title = "Joueurs", Icon = "users" }),
     Items = Window:AddTab({ Title = "Objets & Codes", Icon = "box" }),
     Mods = Window:AddTab({ Title = "Mods & Bypass", Icon = "zap" }),
+    Minigames = Window:AddTab({ Title = "Mini-Jeux (God)", Icon = "gamepad-2" }), -- NOUVEL ONGLET
     Visuals = Window:AddTab({ Title = "Visuels", Icon = "eye" }),
     Settings = Window:AddTab({ Title = "Paramètres", Icon = "settings" })
 }
@@ -308,7 +317,7 @@ local function scanMap()
 end
 
 -- ==========================================
--- BOUCLE DE RENDU ET BYPASS
+-- BOUCLE DE RENDU ET BYPASS (Moha's base)
 -- ==========================================
 Connections["DescendantAdded"] = Workspace.DescendantAdded:Connect(function(v)
     checkEntity(v)
@@ -392,6 +401,69 @@ Connections["Update"] = RunService.Heartbeat:Connect(function()
 end)
 
 -- ==========================================
+-- LOGIQUE DES ADDONS (GOD MODE)
+-- ==========================================
+local auraPart = nil
+Connections["GodMode"] = RunService.RenderStepped:Connect(function()
+    -- Auto Pandemonium
+    if Toggles.AutoPandemonium then
+        pcall(function()
+            local minigameGui = LocalPlayer.PlayerGui:FindFirstChild("PandemoniumMinigame") or LocalPlayer.PlayerGui:FindFirstChild("Minigame")
+            if minigameGui and minigameGui.Enabled then
+                local slider = minigameGui:FindFirstChild("Slider", true)
+                local target = minigameGui:FindFirstChild("Target", true)
+                if slider and target then
+                    slider.Position = target.Position
+                end
+            end
+        end)
+    end
+
+    -- Auto Cables & Force Unlock
+    if (Toggles.AutoCables or Toggles.ForceUnlock) and LocalPlayer.Character then
+        pcall(function()
+            local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                for _, obj in ipairs(Workspace:GetDescendants()) do
+                    if obj:IsA("ProximityPrompt") then
+                        local dist = (root.Position - obj.Parent.WorldPosition).Magnitude
+                        if dist < 15 then
+                            if Toggles.AutoCables and (string.find(string.lower(obj.Parent.Name), "cable") or string.find(string.lower(obj.Parent.Name), "generator")) then
+                                obj.HoldDuration = 0
+                                firePrompt(obj)
+                            end
+                            if Toggles.ForceUnlock and string.find(string.lower(obj.Parent.Name), "lock") then
+                                obj.HoldDuration = 0
+                                firePrompt(obj)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    -- Player Aura
+    if Toggles.PlayerAura and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if not auraPart then
+            auraPart = Instance.new("Part")
+            auraPart.Size = Vector3.new(5, 0.1, 5)
+            auraPart.Anchored = true
+            auraPart.CanCollide = false
+            auraPart.Material = Enum.Material.Neon
+            auraPart.Color = Color3.fromRGB(0, 255, 255)
+            auraPart.Parent = Workspace
+            Instance.new("CylinderMesh", auraPart)
+        end
+        local pos = LocalPlayer.Character.HumanoidRootPart.Position - Vector3.new(0, 3, 0)
+        auraPart.CFrame = CFrame.new(pos) * CFrame.Angles(0, tick() * 2, 0)
+    else
+        if auraPart then auraPart:Destroy(); auraPart = nil end
+    end
+end)
+
+
+-- ==========================================
 -- INTERFACE (ONGLETS)
 -- ==========================================
 Tabs.Main:AddToggle("EntityESP", {Title = "Entity ESP", Default = false}):OnChanged(function(v) Toggles.EntityESP = v end)
@@ -403,6 +475,12 @@ Tabs.Items:AddToggle("DoorESP", {Title = "Door ESP", Default = false}):OnChanged
 Tabs.Items:AddToggle("CodeESP", {Title = "Code/Password ESP", Default = false}):OnChanged(function(v) Toggles.CodeESP = v end)
 Tabs.Items:AddToggle("Loot", {Title = "Auto-Loot Aura", Default = false}):OnChanged(function(v) Toggles.AutoLoot = v end)
 
+-- NOUVEL ONGLET MINI-JEUX
+Tabs.Minigames:AddParagraph({Title = "Assistance Avancée", Content = "Ces fonctions automatisent les mécaniques complexes du jeu."})
+Tabs.Minigames:AddToggle("AutoPande", {Title = "Auto-Pandemonium (Casier)", Default = false}):OnChanged(function(v) Toggles.AutoPandemonium = v end)
+Tabs.Minigames:AddToggle("AutoCable", {Title = "Auto-Répare Câbles/Générateurs", Default = false}):OnChanged(function(v) Toggles.AutoCables = v end)
+Tabs.Minigames:AddToggle("ForceDoor", {Title = "Forcer Portes Verrouillées", Default = false}):OnChanged(function(v) Toggles.ForceUnlock = v end)
+
 Tabs.Mods:AddToggle("CFSpeed", {Title = "Vitesse CFrame", Default = false}):OnChanged(function(v) Toggles.CFrameSpeed = v end)
 Tabs.Mods:AddSlider("SurfSpeed", {Title = "Vitesse Surface", Min = 1, Max = 10, Default = 1, Callback = function(v) Toggles.SpeedSurface = v end})
 Tabs.Mods:AddSlider("WatSpeed", {Title = "Vitesse Eaux", Min = 1, Max = 10, Default = 1, Callback = function(v) Toggles.SpeedWater = v end})
@@ -410,6 +488,7 @@ Tabs.Mods:AddToggle("AVoid", {Title = "Anti-Void Mass", Default = true}):OnChang
 
 Tabs.Visuals:AddToggle("Fullbright", {Title = "Fullbright", Default = false}):OnChanged(function(v) Toggles.Fullbright = v end)
 Tabs.Visuals:AddToggle("NoFog", {Title = "No Fog / Steam", Default = false}):OnChanged(function(v) Toggles.NoFog = v end)
+Tabs.Visuals:AddToggle("Aura", {Title = "Aura Céleste (Cosmétique)", Default = false}):OnChanged(function(v) Toggles.PlayerAura = v end) -- NOUVEAU
 
 Tabs.Settings:AddKeybind("MenuKey", {Title = "Touche Menu", Default = "RightControl", ChangedCallback = function(v) Window.MinimizeKey = v end})
 Tabs.Settings:AddButton({Title = "Unload Script", Callback = function() getgenv().PressurePremium_Unload() end})
@@ -421,6 +500,7 @@ getgenv().PressurePremium_Unload = function()
     for _, c in pairs(Connections) do pcall(function() c:Disconnect() end) end
     for e, _ in pairs(ESP_Cache) do removeESP(e) end
     if ESP_Folder then ESP_Folder:Destroy() end
+    if auraPart then auraPart:Destroy() end
     Window:Destroy()
     getgenv().PressurePremium_Loaded = false
 end
